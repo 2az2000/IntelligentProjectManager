@@ -1,0 +1,12 @@
+node_modules
+.env
+.env.*
+!.env.example
+.backup/
+.DS_Store
+
+# local dev server logs
+/.dev-*.log
+docs
+CLAUDE.md
+.freebuff/
