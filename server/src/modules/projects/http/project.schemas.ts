@@ -11,9 +11,9 @@ const assignableRole = z.enum(PROJECT_ROLES).exclude(['OWNER']);
 export const createProjectBody = z
   .object({
     name: z.string().trim().min(1).max(120),
-    description: z.string().trim().max(2000).optional(),
-    startDate: z.coerce.date().optional(),
-    endDate: z.coerce.date().optional(),
+    description: z.string().trim().max(2000).nullish(),
+    startDate: z.coerce.date().nullish(),
+    endDate: z.coerce.date().nullish(),
   })
   .strict();
 
