@@ -1,0 +1,46 @@
+export const PROJECT_ROLES = ['OWNER', 'ADMIN', 'MEMBER', 'VIEWER'] as const;
+export type ProjectRole = (typeof PROJECT_ROLES)[number];
+export const ASSIGNABLE_ROLES = ['ADMIN', 'MEMBER', 'VIEWER'] as const;
+export type AssignableRole = (typeof ASSIGNABLE_ROLES)[number];
+
+const RANK: Record<ProjectRole, number> = { VIEWER: 0, MEMBER: 1, ADMIN: 2, OWNER: 3 };
+/** VIEWER < MEMBER < ADMIN < OWNER */
+export const hasRole = (actual: ProjectRole, required: ProjectRole) => RANK[actual] >= RANK[required];
+
+export interface UserSummary {
+  id: number;
+  name: string;
+  avatarUrl: string | null;
+}
+
+/** Mirrors ProjectDto in docs/02-API-CONTRACT.md */
+export interface Project {
+  id: number;
+  name: string;
+  description: string | null;
+  startDate: string | null;
+  endDate: string | null;
+  ownerId: number;
+  owner: UserSummary;
+  myRole: ProjectRole;
+  memberCount: number;
+  stats: { total: number; done: number; overdue: number };
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ProjectMember {
+  user: UserSummary & { email: string };
+  role: ProjectRole;
+  joinedAt: string;
+  openTasks: number;
+  openPoints: number;
+}
+
+export interface Teammate {
+  user: UserSummary & { email: string };
+  projectCount: number;
+  openTasks: number;
+  openPoints: number;
+  overdueTasks: number;
+}
