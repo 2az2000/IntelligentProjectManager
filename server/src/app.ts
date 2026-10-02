@@ -14,6 +14,7 @@ import { createProjectsModule } from './modules/projects';
 import { createTasksModule } from './modules/tasks';
 import { createCommentsModule } from './modules/comments';
 import { createDashboardModule } from './modules/dashboard';
+import { createSchedulingModule } from './modules/scheduling';
 
 export function createApp(deps: { db: Db } = { db: prisma }) {
   const app = express();
@@ -60,6 +61,7 @@ export function createApp(deps: { db: Db } = { db: prisma }) {
   const tasks = createTasksModule({ db, projects: projects.service });
   const comments = createCommentsModule({ db, tasks: tasks.service });
   const dashboard = createDashboardModule({ db, projects: projects.service });
+  const scheduling = createSchedulingModule({ db, projects: projects.service });
 
   // Cross-module reaction without a hard dependency from projects to tasks.
   projects.service.hooks.onMemberRemoved = (projectId, userId) =>
@@ -74,6 +76,9 @@ export function createApp(deps: { db: Db } = { db: prisma }) {
   app.use('/comments', comments.commentsRouter);
   app.use('/me', tasks.myTasksRouter, projects.teamRouter);
   app.use('/dashboard', dashboard.router);
+  app.use('/projects/:projectId/schedule', scheduling.projectScheduleRouter);
+  app.use('/projects/:projectId/dependencies', scheduling.dependenciesRouter);
+  app.use('/tasks/:taskId/schedule', scheduling.taskScheduleRouter);
 
   app.use(notFoundHandler);
   app.use(errorHandler);

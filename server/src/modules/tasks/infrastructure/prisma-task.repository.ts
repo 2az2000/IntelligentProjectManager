@@ -38,6 +38,7 @@ const toProps = (row: TaskRow): TaskProps => ({
   startDate: row.startDate,
   dueDate: row.dueDate,
   completedAt: row.completedAt,
+  estimateHours: row.estimateHours,
   authorId: row.authorId,
   assigneeId: row.assigneeId,
   deletedAt: row.deletedAt,

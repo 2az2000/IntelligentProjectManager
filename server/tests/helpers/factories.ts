@@ -43,6 +43,7 @@ export async function createTask(data: {
   parentId?: number;
   assigneeId?: number;
   dueDate?: Date;
+  estimateHours?: number;
   points?: number;
 }) {
   return prisma.task.create({
@@ -56,6 +57,7 @@ export async function createTask(data: {
       parentId: data.parentId,
       assigneeId: data.assigneeId,
       dueDate: data.dueDate,
+      estimateHours: data.estimateHours,
       points: data.points,
     },
   });

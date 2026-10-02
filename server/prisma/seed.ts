@@ -38,13 +38,19 @@ interface SeedTask {
   points?: number;
   assigneeId?: number;
   dueInDays?: number;
+  estimateHours?: number;
   tags?: string[];
   description?: string;
   subtasks?: { title: string; done?: boolean }[];
   comments?: { authorId: number; body: string }[];
 }
 
-async function createTasks(projectId: number, authorId: number, tasks: SeedTask[]) {
+async function createTasks(
+  projectId: number,
+  authorId: number,
+  tasks: SeedTask[],
+): Promise<{ id: number; title: string }[]> {
+  const created: { id: number; title: string }[] = [];
   const positions = new Map<TaskStatus, number>();
   for (const t of tasks) {
     const position = (positions.get(t.status) ?? 0) + 1024;
@@ -58,12 +64,14 @@ async function createTasks(projectId: number, authorId: number, tasks: SeedTask[
       priority: t.priority,
       points: t.points ?? null,
       assigneeId: t.assigneeId ?? null,
+      estimateHours: t.estimateHours ?? null,
       dueDate: t.dueInDays !== undefined ? daysFromNow(t.dueInDays) : null,
       completedAt: t.status === 'DONE' ? daysFromNow(-2) : null,
       tags: t.tags ?? [],
       position,
     };
     const task = await prisma.task.create({ data });
+    created.push({ id: task.id, title: task.title });
     for (const [i, sub] of (t.subtasks ?? []).entries()) {
       await prisma.task.create({
         data: {
@@ -81,6 +89,43 @@ async function createTasks(projectId: number, authorId: number, tasks: SeedTask[
       await prisma.comment.create({ data: { taskId: task.id, authorId: c.authorId, body: c.body } });
     }
   }
+  return created;
+}
+
+/** Links finish-to-start dependencies by seed-task title (throws when a title is missing). */
+async function linkDependencies(
+  tasks: { id: number; title: string }[],
+  pairs: [string, string][],
+) {
+  const idOf = (title: string) => {
+    const t = tasks.find((x) => x.title === title);
+    if (!t) throw new Error(`Seed task not found: ${title}`);
+    return t.id;
+  };
+  await prisma.taskDependency.createMany({
+    data: pairs.map(([from, to]) => ({ predecessorId: idOf(from), successorId: idOf(to) })),
+    skipDuplicates: true,
+  });
+}
+
+/**
+ * Top-up for databases seeded before phase 4: applies estimates and dependencies
+ * to the demo tasks whether they were just created or already existed.
+ * Keep the estimates in sync with the SeedTask lists above.
+ */
+async function ensureSchedule(
+  projectId: number,
+  estimates: Record<string, number>,
+  pairs: [string, string][],
+) {
+  const tasks = await prisma.task.findMany({
+    where: { projectId, deletedAt: null, parentId: null, title: { in: Object.keys(estimates) } },
+    select: { id: true, title: true },
+  });
+  for (const t of tasks) {
+    await prisma.task.update({ where: { id: t.id }, data: { estimateHours: estimates[t.title] } });
+  }
+  await linkDependencies(tasks, pairs);
 }
 
 async function main() {
@@ -99,15 +144,34 @@ async function main() {
         members: { create: { userId: admin.id, role: 'OWNER' } },
       },
     });
-    await createTasks(website.id, admin.id, [
-      { title: 'Gather requirements', status: 'DONE', priority: 'HIGH', points: 3, assigneeId: admin.id },
-      { title: 'Design wireframes', status: 'IN_PROGRESS', priority: 'HIGH', points: 5, assigneeId: sara.id, dueInDays: 2 },
-      { title: 'Build landing page', status: 'TODO', priority: 'MEDIUM', points: 8, assigneeId: sara.id, dueInDays: 9 },
-      { title: 'QA and launch', status: 'TODO', priority: 'URGENT', points: 3, dueInDays: 14 },
+    const websiteTasks = await createTasks(website.id, admin.id, [
+      { title: 'Gather requirements', status: 'DONE', priority: 'HIGH', points: 3, assigneeId: admin.id, estimateHours: 8 },
+      { title: 'Design wireframes', status: 'IN_PROGRESS', priority: 'HIGH', points: 5, assigneeId: sara.id, dueInDays: 2, estimateHours: 20 },
+      { title: 'Build landing page', status: 'TODO', priority: 'MEDIUM', points: 8, assigneeId: sara.id, dueInDays: 9, estimateHours: 32 },
+      { title: 'QA and launch', status: 'TODO', priority: 'URGENT', points: 3, dueInDays: 14, estimateHours: 12 },
+    ]);
+    await linkDependencies(websiteTasks, [
+      ['Gather requirements', 'Design wireframes'],
+      ['Design wireframes', 'Build landing page'],
+      ['Build landing page', 'QA and launch'],
     ]);
   }
   await ensureMember(website.id, sara.id, 'MEMBER');
   await ensureMember(website.id, reza.id, 'VIEWER');
+  await ensureSchedule(
+    website.id,
+    {
+      'Gather requirements': 8,
+      'Design wireframes': 20,
+      'Build landing page': 32,
+      'QA and launch': 12,
+    },
+    [
+      ['Gather requirements', 'Design wireframes'],
+      ['Design wireframes', 'Build landing page'],
+      ['Build landing page', 'QA and launch'],
+    ],
+  );
 
   // ---- Mobile App Launch (rich demo data) -------------------------------------------------
   let mobile = await prisma.project.findFirst({ where: { name: 'Mobile App Launch', deletedAt: null } });
@@ -124,13 +188,14 @@ async function main() {
     });
     await ensureMember(mobile.id, sara.id, 'ADMIN');
     await ensureMember(mobile.id, reza.id, 'MEMBER');
-    await createTasks(mobile.id, admin.id, [
+    const mobileTasks = await createTasks(mobile.id, admin.id, [
       {
         title: 'طراحی صفحه‌ی ورود',
         status: 'DONE',
         priority: 'HIGH',
         points: 5,
         assigneeId: sara.id,
+        estimateHours: 16,
         tags: ['design', 'auth'],
       },
       {
@@ -140,6 +205,7 @@ async function main() {
         points: 8,
         assigneeId: reza.id,
         dueInDays: -1,
+        estimateHours: 24,
         tags: ['backend', 'payment'],
         description: 'اتصال به درگاه پرداخت و مدیریت callback ها.',
         subtasks: [
@@ -159,6 +225,7 @@ async function main() {
         points: 5,
         assigneeId: reza.id,
         dueInDays: 3,
+        estimateHours: 12,
         tags: ['mobile'],
       },
       {
@@ -168,6 +235,7 @@ async function main() {
         points: 2,
         assigneeId: admin.id,
         dueInDays: 6,
+        estimateHours: 6,
         tags: ['marketing'],
       },
       {
@@ -177,11 +245,44 @@ async function main() {
         points: 8,
         assigneeId: sara.id,
         dueInDays: 12,
+        estimateHours: 16,
         subtasks: [{ title: 'انتخاب کاربران بتا' }, { title: 'فرم بازخورد' }],
       },
-      { title: 'انتشار در کافه‌بازار', status: 'TODO', priority: 'URGENT', points: 3, dueInDays: 20 },
+      {
+        title: 'انتشار در کافه‌بازار',
+        status: 'TODO',
+        priority: 'URGENT',
+        points: 3,
+        dueInDays: 20,
+        estimateHours: 4,
+      },
+    ]);
+    await linkDependencies(mobileTasks, [
+      ['طراحی صفحه‌ی ورود', 'پیاده‌سازی API پرداخت'],
+      ['پیاده‌سازی API پرداخت', 'تست بتا با ۵۰ کاربر'],
+      ['Push notifications', 'تست بتا با ۵۰ کاربر'],
+      ['تست بتا با ۵۰ کاربر', 'انتشار در کافه‌بازار'],
+      ['نوشتن متن‌های فروشگاه', 'انتشار در کافه‌بازار'],
     ]);
   }
+  await ensureSchedule(
+    mobile.id,
+    {
+      'طراحی صفحه‌ی ورود': 16,
+      'پیاده‌سازی API پرداخت': 24,
+      'Push notifications': 12,
+      'نوشتن متن‌های فروشگاه': 6,
+      'تست بتا با ۵۰ کاربر': 16,
+      'انتشار در کافه‌بازار': 4,
+    },
+    [
+      ['طراحی صفحه‌ی ورود', 'پیاده‌سازی API پرداخت'],
+      ['پیاده‌سازی API پرداخت', 'تست بتا با ۵۰ کاربر'],
+      ['Push notifications', 'تست بتا با ۵۰ کاربر'],
+      ['تست بتا با ۵۰ کاربر', 'انتشار در کافه‌بازار'],
+      ['نوشتن متن‌های فروشگاه', 'انتشار در کافه‌بازار'],
+    ],
+  );
 
   console.log(
     `Seed complete: users ${admin.email}, ${sara.email}, ${reza.email}; projects "${website.name}", "${mobile.name}".`,
