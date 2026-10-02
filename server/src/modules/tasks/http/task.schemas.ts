@@ -18,6 +18,7 @@ export const createTaskBody = z
     points: z.number().int().min(0).max(1000).optional(),
     startDate: z.coerce.date().optional(),
     dueDate: z.coerce.date().optional(),
+    estimateHours: z.number().min(0).max(10_000).optional(),
     assigneeId: z.number().int().positive().optional(),
     parentId: z.number().int().positive().optional(),
     tags: tags.optional(),
@@ -33,6 +34,7 @@ export const updateTaskBody = z
     points: z.number().int().min(0).max(1000).nullable(),
     startDate: nullableDate,
     dueDate: nullableDate,
+    estimateHours: z.number().min(0).max(10_000).nullable(),
     assigneeId: z.number().int().positive().nullable(),
     tags,
   })

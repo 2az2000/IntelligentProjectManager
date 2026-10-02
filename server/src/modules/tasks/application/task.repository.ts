@@ -62,6 +62,7 @@ export type TaskPatch = Partial<
     | 'points'
     | 'startDate'
     | 'dueDate'
+    | 'estimateHours'
     | 'assigneeId'
     | 'completedAt'
     | 'position'

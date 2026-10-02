@@ -17,6 +17,7 @@ const base: TaskProps = {
   startDate: null,
   dueDate: null,
   completedAt: null,
+  estimateHours: null,
   authorId: 1,
   assigneeId: null,
   deletedAt: null,

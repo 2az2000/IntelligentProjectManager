@@ -15,6 +15,7 @@ export interface TaskDto {
   points: number | null;
   startDate: string | null;
   dueDate: string | null;
+  estimateHours: number | null;
   completedAt: string | null;
   author: UserSummary;
   assignee: UserSummary | null;
@@ -46,6 +47,7 @@ export function toTaskDto(task: TaskView): TaskDto {
     points: task.points,
     startDate: iso(task.startDate),
     dueDate: iso(task.dueDate),
+    estimateHours: task.estimateHours,
     completedAt: iso(task.completedAt),
     author: task.author,
     assignee: task.assignee,

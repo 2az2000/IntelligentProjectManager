@@ -111,12 +111,19 @@ model Task {
   tags        String[]     @default([])
   startDate   DateTime?
   dueDate     DateTime?
-  completedAt DateTime?
-  points      Int?
+  completedAt  DateTime?
+  points       Int?
+  /// Effort estimate in working hours — drives CPM durations (see modules/scheduling).
+  estimateHours Float?
 
   parentId Int?
   parent   Task?  @relation("SubTasks", fields: [parentId], references: [id], onDelete: Cascade)
   subtasks Task[] @relation("SubTasks")
+
+  /// Rows where this task is the predecessor (it blocks these tasks).
+  blocks    TaskDependency[] @relation("TaskDependencyPredecessor")
+  /// Rows where this task is the successor (it depends on these tasks).
+  dependsOn TaskDependency[] @relation("TaskDependencySuccessor")
 
   projectId Int
   project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
@@ -138,6 +145,24 @@ model Task {
   @@index([assigneeId])
   @@index([parentId])
   @@index([dueDate])
+}
+
+/// Finish-to-start: the predecessor must finish before the successor can start.
+enum DependencyType {
+  FINISH_TO_START
+}
+
+/// Dependency edge between two top-level tasks of the same project.
+model TaskDependency {
+  predecessorId Int
+  successorId   Int
+  type          DependencyType @default(FINISH_TO_START)
+
+  predecessor Task @relation("TaskDependencyPredecessor", fields: [predecessorId], references: [id], onDelete: Cascade)
+  successor   Task @relation("TaskDependencySuccessor", fields: [successorId], references: [id], onDelete: Cascade)
+
+  @@id([predecessorId, successorId])
+  @@index([successorId])
 }
 
 model Attachment {

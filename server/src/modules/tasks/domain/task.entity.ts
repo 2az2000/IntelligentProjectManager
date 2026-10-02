@@ -22,6 +22,8 @@ export interface TaskProps {
   startDate: Date | null;
   dueDate: Date | null;
   completedAt: Date | null;
+  /** Effort estimate in working hours (scheduling input — see modules/scheduling). */
+  estimateHours: number | null;
   authorId: number;
   assigneeId: number | null;
   deletedAt: Date | null;
@@ -39,6 +41,7 @@ export interface TaskChanges {
   points?: number | null;
   startDate?: Date | null;
   dueDate?: Date | null;
+  estimateHours?: number | null;
   assigneeId?: number | null;
 }
 
@@ -89,6 +92,7 @@ export class Task {
       points: input.points ?? null,
       startDate: input.startDate ?? null,
       dueDate: input.dueDate ?? null,
+      estimateHours: input.estimateHours ?? null,
       assigneeId: input.assigneeId ?? null,
       completedAt: status === 'DONE' ? now : null,
     };
@@ -123,6 +127,9 @@ export class Task {
     }
     if (changes.description !== undefined) patch.description = changes.description?.trim() || null;
     if (changes.tags !== undefined) patch.tags = normalizeTags(changes.tags);
+    if (changes.estimateHours != null && changes.estimateHours < 0) {
+      throw new ValidationError(null, 'Estimate hours cannot be negative');
+    }
     assertDates(
       changes.startDate !== undefined ? changes.startDate : this.props.startDate,
       changes.dueDate !== undefined ? changes.dueDate : this.props.dueDate,
