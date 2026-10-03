@@ -9,6 +9,8 @@ export const taskFormSchema = z.object({
   assigneeId: z.number().int().positive().nullable(),
   dueDate: z.date().nullable(),
   points: z.number().int().min(0, 'invalidNumber').max(1000, 'invalidNumber').nullable(),
+  // Matches the server: Float, 0..10_000 (fractional hours allowed).
+  estimateHours: z.number().min(0, 'invalidNumber').max(10_000, 'invalidNumber').nullable(),
 });
 
 export type TaskFormValues = z.infer<typeof taskFormSchema>;

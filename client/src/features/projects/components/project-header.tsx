@@ -1,17 +1,20 @@
 'use client';
 
-import { KanbanSquare, List, Settings } from 'lucide-react';
+import { GanttChartSquare, KanbanSquare, List, Settings } from 'lucide-react';
 import { useLocale, useTranslations } from 'next-intl';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ErrorState } from '@/components/shared/error-state';
 import { Link, usePathname } from '@/i18n/navigation';
 import { formatDate } from '@/lib/format';
 import { cn } from '@/lib/utils';
+// Via the barrel is safe: scheduling never imports the projects barrel (only deep paths).
+import { PredictedFinishBadge } from '@/features/scheduling';
 import { useProject } from '../hooks/use-projects';
 
 const TABS = [
   { key: 'board', icon: KanbanSquare },
   { key: 'list', icon: List },
+  { key: 'timeline', icon: GanttChartSquare },
   { key: 'settings', icon: Settings },
 ] as const;
 
@@ -31,15 +34,18 @@ export function ProjectHeader({ projectId }: { projectId: number }) {
         ) : (
           <>
             <h1 className="text-3xl font-bold tracking-tight">{project.name}</h1>
-            <p className="mt-1 text-sm text-muted-foreground">
-              {project.description}
-              {(project.startDate || project.endDate) && (
-                <span className="ms-2">
-                  {project.startDate && formatDate(project.startDate, locale)}
-                  {' — '}
-                  {project.endDate && formatDate(project.endDate, locale)}
-                </span>
-              )}
+            <p className="mt-1 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+              <span>
+                {project.description}
+                {(project.startDate || project.endDate) && (
+                  <span className="ms-2">
+                    {project.startDate && formatDate(project.startDate, locale)}
+                    {' — '}
+                    {project.endDate && formatDate(project.endDate, locale)}
+                  </span>
+                )}
+              </span>
+              <PredictedFinishBadge projectId={projectId} />
             </p>
           </>
         )}

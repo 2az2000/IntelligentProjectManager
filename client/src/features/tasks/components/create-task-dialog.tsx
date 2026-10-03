@@ -33,6 +33,7 @@ const EMPTY: TaskFormValues = {
   assigneeId: null,
   dueDate: null,
   points: null,
+  estimateHours: null,
 };
 
 export function CreateTaskDialog({ projectId, members }: { projectId: number; members: UserSummary[] }) {
@@ -53,6 +54,7 @@ export function CreateTaskDialog({ projectId, members }: { projectId: number; me
         assigneeId: values.assigneeId ?? undefined,
         dueDate: values.dueDate ? toDayIso(values.dueDate) : undefined,
         points: values.points ?? undefined,
+        estimateHours: values.estimateHours ?? undefined,
       },
       {
         onSuccess: () => {
@@ -147,6 +149,28 @@ export function CreateTaskDialog({ projectId, members }: { projectId: number; me
                         min={0}
                         max={1000}
                         inputMode="numeric"
+                        value={field.value ?? ''}
+                        onChange={(e) =>
+                          field.onChange(e.target.value === '' ? null : Number(e.target.value))
+                        }
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="estimateHours"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('estimateHoursLabel')}</FormLabel>
+                    <FormControl>
+                      <Input
+                        type="number"
+                        min={0}
+                        max={10000}
+                        step="0.5"
                         value={field.value ?? ''}
                         onChange={(e) =>
                           field.onChange(e.target.value === '' ? null : Number(e.target.value))

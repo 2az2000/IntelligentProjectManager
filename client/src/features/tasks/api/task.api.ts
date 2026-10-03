@@ -7,6 +7,7 @@ export interface CreateTaskInput {
   status?: TaskStatus;
   priority?: TaskPriority;
   points?: number;
+  estimateHours?: number;
   assigneeId?: number;
   dueDate?: string;
   parentId?: number;
@@ -19,6 +20,7 @@ export interface UpdateTaskInput {
   status?: TaskStatus;
   priority?: TaskPriority;
   points?: number | null;
+  estimateHours?: number | null;
   startDate?: string | null;
   dueDate?: string | null;
   assigneeId?: number | null;

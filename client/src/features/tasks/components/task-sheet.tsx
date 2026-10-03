@@ -24,6 +24,7 @@ import { DatePicker } from '@/components/shared/date-picker';
 import { ErrorState } from '@/components/shared/error-state';
 import { useCurrentUser } from '@/features/auth';
 import { hasRole, useProject, useProjectMembers } from '@/features/projects';
+import { DependenciesSection } from '@/features/scheduling';
 import { useErrorMessage } from '@/hooks/use-error-message';
 import { Link } from '@/i18n/navigation';
 import { toDayIso } from '@/lib/calendar';
@@ -88,6 +89,7 @@ function TaskDetailBody({ task }: { task: TaskDetail }) {
   const [description, setDescription] = useState(task.description ?? '');
   const [tags, setTags] = useState(task.tags.join(', '));
   const [points, setPoints] = useState(task.points?.toString() ?? '');
+  const [estimateHours, setEstimateHours] = useState(task.estimateHours?.toString() ?? '');
 
   const save = (input: UpdateTaskInput) =>
     update.mutate({ taskId: task.id, input }, { onError: (error) => toast.error(toMessage(error)) });
@@ -163,6 +165,22 @@ function TaskDetailBody({ task }: { task: TaskDetail }) {
             }}
           />
         </Field>
+        <Field label={t('estimateHoursLabel')} id="task-estimate">
+          <Input
+            id="task-estimate"
+            type="number"
+            min={0}
+            max={10000}
+            step="0.5"
+            value={estimateHours}
+            disabled={!canEdit}
+            onChange={(e) => setEstimateHours(e.target.value)}
+            onBlur={() => {
+              const next = estimateHours === '' ? null : Math.max(0, Math.min(10000, Number(estimateHours)));
+              if (next !== task.estimateHours && (next === null || Number.isFinite(next))) save({ estimateHours: next });
+            }}
+          />
+        </Field>
         <Field label={t('tagsLabel')} id="task-tags">
           <Input
             id="task-tags"
@@ -193,7 +211,10 @@ function TaskDetailBody({ task }: { task: TaskDetail }) {
       </Field>
 
       {task.parentId === null && (
-        <Subtasks task={task} canEdit={canEdit} onOpen={openTask} />
+        <>
+          <Subtasks task={task} canEdit={canEdit} onOpen={openTask} />
+          <DependenciesSection task={task} canEdit={canEdit} />
+        </>
       )}
 
       <Separator />
