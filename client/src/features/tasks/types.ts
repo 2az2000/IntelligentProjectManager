@@ -26,6 +26,8 @@ export interface Task {
   position: number;
   tags: string[];
   points: number | null;
+  /** Effort estimate in working hours; null = not estimated (drives CPM scheduling). */
+  estimateHours: number | null;
   startDate: string | null;
   dueDate: string | null;
   completedAt: string | null;

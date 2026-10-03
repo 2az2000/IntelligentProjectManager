@@ -2,8 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { isOverdue } from '../types';
 
 describe('isOverdue', () => {
-  const yesterday = '2026-09-29T00:00:00.000Z';
-  const tomorrow = '2026-10-01T00:00:00.000Z';
+  // Relative to the clock — hard-coded dates go stale as real time passes.
+  const DAY = 24 * 60 * 60 * 1000;
+  const yesterday = new Date(Date.now() - DAY).toISOString();
+  const tomorrow = new Date(Date.now() + DAY).toISOString();
 
   it('flags open tasks with a past due date', () => {
     expect(isOverdue({ dueDate: yesterday, status: 'TODO' })).toBe(true);

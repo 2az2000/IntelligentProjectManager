@@ -83,6 +83,7 @@
     "tabs": {
       "board": "بورد",
       "list": "لیست",
+      "timeline": "زمان‌بندی",
       "settings": "تنظیمات"
     },
     "roles": {
@@ -116,6 +117,7 @@
     "statusLabel": "وضعیت",
     "priorityLabel": "اولویت",
     "pointsLabel": "امتیاز",
+    "estimateHoursLabel": "تخمین (ساعت)",
     "dueDateLabel": "تاریخ سررسید",
     "assigneeLabel": "مسئول",
     "tagsLabel": "برچسب‌ها",
@@ -186,6 +188,27 @@
     "next": "ماه بعد",
     "today": "امروز",
     "more": "+{count} بیشتر"
+  },
+  "Scheduling": {
+    "dependencies": "وابستگی‌ها",
+    "dependsOn": "وابسته به",
+    "blocks": "مسدود می‌کند",
+    "emptyDependencies": "هنوز وابستگی‌ای نیست. تسک‌ها را به هم وصل کنید تا پیش‌نیازها مشخص شود.",
+    "addPlaceholder": "انتخاب تسک",
+    "duration": "مجموعاً {count} ساعت",
+    "predictedFinish": "پایان پیش‌بینی‌شده: {date}",
+    "criticalCount": "{count} تسک در مسیر بحرانی",
+    "unestimated": "{count} تسک تخمین ساعت ندارند — در محاسبه‌ی زمان‌بندی مؤثر نیستند.",
+    "apply": "پر کردن تاریخ‌های خالی",
+    "applied": "زمان‌بندی روی تاریخ‌های خالی اعمال شد",
+    "barLabel": "{title}: {estimate} ساعت · فلکس {slack} ساعت",
+    "empty": "هنوز تسکی برای زمان‌بندی نیست",
+    "legend": {
+      "critical": "بحرانی",
+      "slack": "فلکس",
+      "done": "انجام‌شده",
+      "unestimated": "بدون تخمین"
+    }
   },
   "Members": {
     "title": "اعضای تیم",
@@ -292,6 +315,9 @@
     "NOT_COMMENT_AUTHOR": "فقط نویسنده می‌تواند این نظر را تغییر دهد.",
     "INSUFFICIENT_ROLE": "در این پروژه اجازه‌ی انجام این کار را ندارید.",
     "FORBIDDEN": "اجازه‌ی انجام این کار را ندارید.",
+    "DEPENDENCY_CYCLE": "این وابستگی یک حلقه در زنجیره ایجاد می‌کند.",
+    "DEPENDENCY_EXISTS": "این وابستگی از قبل وجود دارد.",
+    "DEPENDENCY_NOT_FOUND": "وابستگی یافت نشد.",
     "ROUTE_NOT_FOUND": "منبع درخواست‌شده وجود ندارد.",
     "INTERNAL_ERROR": "خطایی در سرور رخ داد. دوباره تلاش کنید.",
     "UNKNOWN_ERROR": "خطایی رخ داد."

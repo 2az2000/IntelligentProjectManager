@@ -83,6 +83,7 @@
     "tabs": {
       "board": "Board",
       "list": "List",
+      "timeline": "Timeline",
       "settings": "Settings"
     },
     "roles": {
@@ -116,6 +117,7 @@
     "statusLabel": "Status",
     "priorityLabel": "Priority",
     "pointsLabel": "Points",
+    "estimateHoursLabel": "Estimate (hours)",
     "dueDateLabel": "Due date",
     "assigneeLabel": "Assignee",
     "tagsLabel": "Tags",
@@ -186,6 +188,27 @@
     "next": "Next month",
     "today": "Today",
     "more": "+{count} more"
+  },
+  "Scheduling": {
+    "dependencies": "Dependencies",
+    "dependsOn": "Depends on",
+    "blocks": "Blocks",
+    "emptyDependencies": "No dependencies yet. Link tasks to mark what blocks what.",
+    "addPlaceholder": "Select a task",
+    "duration": "{count} h total",
+    "predictedFinish": "Predicted finish: {date}",
+    "criticalCount": "{count} on the critical path",
+    "unestimated": "{count} task(s) have no estimate yet — they don't affect the schedule.",
+    "apply": "Fill empty dates",
+    "applied": "Schedule applied to empty dates",
+    "barLabel": "{title}: {estimate} h · slack {slack} h",
+    "empty": "No tasks to schedule yet",
+    "legend": {
+      "critical": "Critical",
+      "slack": "Slack",
+      "done": "Done",
+      "unestimated": "No estimate"
+    }
   },
   "Members": {
     "title": "Team Members",
@@ -292,6 +315,9 @@
     "NOT_COMMENT_AUTHOR": "Only the author can modify this comment.",
     "INSUFFICIENT_ROLE": "You don't have permission to do this in this project.",
     "FORBIDDEN": "You don't have permission to do this.",
+    "DEPENDENCY_CYCLE": "This dependency would create a cycle.",
+    "DEPENDENCY_EXISTS": "This dependency already exists.",
+    "DEPENDENCY_NOT_FOUND": "Dependency not found.",
     "ROUTE_NOT_FOUND": "The requested resource does not exist.",
     "INTERNAL_ERROR": "The server encountered an error. Please try again.",
     "UNKNOWN_ERROR": "Something went wrong."

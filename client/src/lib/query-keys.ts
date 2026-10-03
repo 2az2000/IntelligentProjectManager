@@ -23,5 +23,13 @@ export const qk = {
   comments: {
     byTask: (taskId: number) => ['comments', taskId] as const,
   },
+  schedule: {
+    all: ['schedule'] as const,
+    byProject: (projectId: number) => ['schedule', 'project', projectId] as const,
+    byTask: (taskId: number) => ['schedule', 'task', taskId] as const,
+  },
+  dependencies: {
+    byProject: (projectId: number) => ['dependencies', 'project', projectId] as const,
+  },
   dashboard: ['dashboard'] as const,
 };

@@ -1,5 +1,6 @@
 import { http, HttpResponse } from 'msw';
 import type { Project, ProjectMember, Teammate } from '@/features/projects/types';
+import type { ScheduleResult } from '@/features/scheduling/types';
 import type { Task } from '@/features/tasks/types';
 
 export const API = 'http://localhost:8000';
@@ -54,6 +55,7 @@ const task = (overrides: Partial<Task>): Task => ({
   position: 1024,
   tags: [],
   points: null,
+  estimateHours: null,
   startDate: null,
   dueDate: null,
   completedAt: null,
@@ -90,6 +92,49 @@ export const tasks: Task[] = [
   }),
 ];
 
+/** Seed-shaped CPM result for project 1: A (24h) is critical, the DONE task never is. */
+export const schedule: ScheduleResult = {
+  projectDurationHours: 24,
+  criticalPath: [1],
+  tasks: [
+    {
+      id: 1,
+      title: 'Design hero section',
+      status: 'IN_PROGRESS',
+      estimateHours: 24,
+      startDate: '2026-09-01T00:00:00.000Z',
+      dueDate: '2026-10-01T00:00:00.000Z',
+      earliestStart: 0,
+      earliestFinish: 24,
+      latestStart: 0,
+      latestFinish: 24,
+      slack: 0,
+      isCritical: true,
+      scheduledStart: '2026-09-01T08:00:00.000Z',
+      scheduledFinish: '2026-09-02T08:00:00.000Z',
+    },
+    {
+      id: 2,
+      title: 'Set up CI',
+      status: 'DONE',
+      estimateHours: 8,
+      startDate: null,
+      dueDate: null,
+      earliestStart: 24,
+      earliestFinish: 24,
+      latestStart: 64,
+      latestFinish: 64,
+      slack: 40,
+      isCritical: false,
+      scheduledStart: null,
+      scheduledFinish: null,
+    },
+  ],
+  unestimatedTaskIds: [],
+};
+
+export const dependencies = [{ predecessorId: 1, successorId: 2, type: 'FINISH_TO_START' as const }];
+
 export const handlers = [
   http.get(`${API}/auth/me`, () =>
     HttpResponse.json({ id: 1, email: 'admin@example.com', name: admin.name, avatarUrl: null, locale: 'fa', theme: null }),
@@ -98,5 +143,12 @@ export const handlers = [
   http.get(`${API}/projects/1`, () => HttpResponse.json(project)),
   http.get(`${API}/projects/1/members`, () => HttpResponse.json([projectMember])),
   http.get(`${API}/projects/1/tasks`, () => HttpResponse.json(tasks)),
+  http.get(`${API}/projects/1/schedule`, () => HttpResponse.json(schedule)),
+  http.post(`${API}/projects/1/schedule/apply`, () => HttpResponse.json(schedule)),
+  http.get(`${API}/projects/1/dependencies`, () => HttpResponse.json(dependencies)),
+  http.post(`${API}/projects/1/dependencies`, () =>
+    HttpResponse.json({ predecessorId: 2, successorId: 1, type: 'FINISH_TO_START' }, { status: 201 }),
+  ),
+  http.delete(`${API}/projects/1/dependencies/:predecessorId/:successorId`, () => new HttpResponse(null, { status: 204 })),
   http.get(`${API}/me/team`, () => HttpResponse.json([teammate])),
 ];
