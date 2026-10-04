@@ -1,4 +1,5 @@
 import { calculateCriticalPath } from '../domain/critical-path';
+import { addWorkingHours } from '../domain/work-calendar';
 
 /** One node of the project graph — a top-level task with its scheduling inputs. */
 export interface ScheduleTask {
@@ -50,18 +51,18 @@ export interface ScheduleResult {
   unestimatedTaskIds: number[];
 }
 
-const HOUR = 60 * 60 * 1000;
-
-function addHours(iso: string, hours: number): string {
-  return new Date(new Date(iso).getTime() + hours * HOUR).toISOString();
-}
-
 /**
  * Critical Path Method over the project's tasks and dependencies.
  * Finished tasks contribute zero effort; unestimated tasks pass through the
  * graph with zero duration so their timing still reflects their position.
+ * `weekend` (JS getDay() values) converts hour offsets to calendar dates by
+ * skipping non-working days — empty set means every calendar day counts.
  */
-export function buildSchedule(tasks: ScheduleTask[], deps: ScheduleEdge[]): ScheduleResult {
+export function buildSchedule(
+  tasks: ScheduleTask[],
+  deps: ScheduleEdge[],
+  weekend: Set<number> = new Set(),
+): ScheduleResult {
   const byId = new Map(tasks.map((t) => [t.id, t]));
   // Drop edges that reference tasks outside the set (e.g. deleted mid-read).
   const edges = deps.filter((d) => byId.has(d.predecessorId) && byId.has(d.successorId));
@@ -85,7 +86,9 @@ export function buildSchedule(tasks: ScheduleTask[], deps: ScheduleEdge[]): Sche
   const scheduled: ScheduledTask[] = tasks.map((t) => {
     const tm = timings.get(t.id)!;
     const hasEstimate = t.estimateHours !== null;
-    const scheduledStart = t.startDate ? addHours(t.startDate, tm.es) : null;
+    const scheduledStart = t.startDate
+      ? addWorkingHours(new Date(t.startDate), tm.es, weekend).toISOString()
+      : null;
     return {
       id: t.id,
       title: t.title,
@@ -101,7 +104,9 @@ export function buildSchedule(tasks: ScheduleTask[], deps: ScheduleEdge[]): Sche
       isCritical: hasEstimate && critical.has(t.id),
       scheduledStart,
       scheduledFinish:
-        scheduledStart && t.estimateHours ? addHours(scheduledStart, t.estimateHours) : null,
+        scheduledStart && t.estimateHours
+          ? addWorkingHours(new Date(scheduledStart), t.estimateHours, weekend).toISOString()
+          : null,
     };
   });
 

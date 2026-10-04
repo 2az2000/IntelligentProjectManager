@@ -9,6 +9,7 @@ export interface User {
   avatarUrl: string | null;
   locale: string;
   theme: string | null;
+  notifyEmail: boolean;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -18,6 +19,7 @@ export interface UserProfileChanges {
   avatarUrl?: string | null;
   locale?: (typeof LOCALES)[number];
   theme?: (typeof THEMES)[number] | null;
+  notifyEmail?: boolean;
 }
 
 export interface UserSearchResult {
@@ -34,6 +36,7 @@ export interface UserDto {
   avatarUrl: string | null;
   locale: string;
   theme: string | null;
+  notifyEmail: boolean;
 }
 
 export interface UserSummaryDto {
@@ -49,4 +52,5 @@ export const toUserDto = (user: User): UserDto => ({
   avatarUrl: user.avatarUrl,
   locale: user.locale,
   theme: user.theme,
+  notifyEmail: user.notifyEmail,
 });

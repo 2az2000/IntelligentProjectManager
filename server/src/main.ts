@@ -3,8 +3,14 @@ import { env } from './config/env';
 import { logger } from './shared/logger';
 import { prisma } from './shared/db/prisma';
 import { createApp } from './app';
+import { createRealtimeServer } from './shared/realtime/server';
+import type { Jobs } from './modules/jobs';
 
-const server = http.createServer(createApp());
+const app = createApp();
+const server = http.createServer(app);
+// Phase 5: realtime layer shares the HTTP server (cookie handshake, project rooms).
+const io = createRealtimeServer(server, { db: prisma });
+const jobs = app.get('jobs') as Jobs;
 
 server.on('error', (err: NodeJS.ErrnoException) => {
   if (err.code === 'EADDRINUSE') {
@@ -21,6 +27,8 @@ server.listen(env.PORT, () => {
 
 async function shutdown(signal: string) {
   logger.info(`${signal} received, shutting down`);
+  io.close();
+  await jobs.close();
   server.close(async () => {
     await prisma.$disconnect();
     process.exit(0);

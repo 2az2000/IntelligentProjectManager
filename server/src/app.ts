@@ -15,6 +15,11 @@ import { createTasksModule } from './modules/tasks';
 import { createCommentsModule } from './modules/comments';
 import { createDashboardModule } from './modules/dashboard';
 import { createSchedulingModule } from './modules/scheduling';
+import { createActivityModule } from './modules/activity';
+import { createAttachmentsModule } from './modules/attachments';
+import { createNotificationsModule } from './modules/notifications';
+import { createJobsModule } from './modules/jobs';
+import { publish } from './shared/realtime/bus';
 
 export function createApp(deps: { db: Db } = { db: prisma }) {
   const app = express();
@@ -62,10 +67,68 @@ export function createApp(deps: { db: Db } = { db: prisma }) {
   const comments = createCommentsModule({ db, tasks: tasks.service });
   const dashboard = createDashboardModule({ db, projects: projects.service });
   const scheduling = createSchedulingModule({ db, projects: projects.service });
+  const activity = createActivityModule({ db, tasks: tasks.service });
+  const attachments = createAttachmentsModule({ db, tasks: tasks.service });
+  const notifications = createNotificationsModule({ db });
+  // Disabled in tests (and wherever REDIS_URL is unreachable).
+  const jobs = createJobsModule({ db });
 
   // Cross-module reaction without a hard dependency from projects to tasks.
   projects.service.hooks.onMemberRemoved = (projectId, userId) =>
     tasks.service.unassignUser(projectId, userId);
+
+  // Phase 5: activity log + realtime broadcast + assignment notifications + reminder jobs.
+  tasks.service.hooks.onChanged = (event) => {
+    activity.service.record({ actorId: event.actorId, taskId: event.taskId, action: event.kind, changes: event.changes });
+    publish('task:changed', {
+      projectId: event.projectId,
+      taskId: event.taskId,
+      kind: event.kind,
+      actorId: event.actorId,
+      changes: event.changes,
+    });
+    for (const userId of event.notifyUserIds ?? []) {
+      notifications.service.safeCreate({
+        userId,
+        type: 'ASSIGNED',
+        actorId: event.actorId,
+        taskId: event.taskId,
+        projectId: event.projectId,
+      });
+    }
+    if (event.kind === 'created' || event.kind === 'updated') {
+      void jobs.scheduleDueReminder(event.taskId);
+    }
+  };
+
+  comments.service.hooks.onCreated = (event) => {
+    publish('comment:created', {
+      projectId: event.projectId,
+      taskId: event.taskId,
+      commentId: event.commentId,
+      authorId: event.authorId,
+      mentionedUserIds: event.mentionedUserIds,
+    });
+    if (event.assigneeId && event.assigneeId !== event.authorId) {
+      notifications.service.safeCreate({
+        userId: event.assigneeId,
+        type: 'COMMENTED',
+        actorId: event.authorId,
+        taskId: event.taskId,
+        projectId: event.projectId,
+      });
+    }
+    for (const userId of event.mentionedUserIds) {
+      if (userId === event.authorId) continue;
+      notifications.service.safeCreate({
+        userId,
+        type: 'MENTIONED',
+        actorId: event.authorId,
+        taskId: event.taskId,
+        projectId: event.projectId,
+      });
+    }
+  };
 
   app.use('/auth', auth.router);
   app.use('/users', users.router);
@@ -79,9 +142,16 @@ export function createApp(deps: { db: Db } = { db: prisma }) {
   app.use('/projects/:projectId/schedule', scheduling.projectScheduleRouter);
   app.use('/projects/:projectId/dependencies', scheduling.dependenciesRouter);
   app.use('/tasks/:taskId/schedule', scheduling.taskScheduleRouter);
+  app.use('/tasks/:taskId/attachments', attachments.taskAttachmentsRouter);
+  app.use('/tasks/:taskId/activity', activity.activityRouter);
+  app.use('/attachments', attachments.attachmentsRouter);
+  app.use('/notifications', notifications.notificationsRouter);
 
   app.use(notFoundHandler);
   app.use(errorHandler);
+
+  // main.ts picks this up for graceful shutdown (no-op in tests).
+  app.set('jobs', jobs);
 
   return app;
 }

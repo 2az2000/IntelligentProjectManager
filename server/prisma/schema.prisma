@@ -38,6 +38,8 @@ model User {
   avatarUrl    String?
   locale       String  @default("fa")
   theme        String?
+  /// Phase 5: daily digest + due-date reminder emails (nodemailer in dev logs to console).
+  notifyEmail  Boolean @default(true)
 
   memberships     ProjectMember[]
   refreshTokens   RefreshToken[]
@@ -45,6 +47,10 @@ model User {
   authoredTasks   Task[]          @relation("TaskAuthor")
   assignedTasks   Task[]          @relation("TaskAssignee")
   comments        Comment[]
+  attachments     Attachment[]    @relation("AttachmentUploader")
+  taskActivities  ActivityLog[]   @relation("ActivityActor")
+  notifications   Notification[]  @relation("NotificationOwner")
+  actedNotifications Notification[] @relation("NotificationActor")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -136,6 +142,8 @@ model Task {
 
   attachments Attachment[]
   comments    Comment[]
+  activities  ActivityLog[]
+  notifications Notification[]
 
   deletedAt DateTime?
   createdAt DateTime  @default(now())
@@ -165,14 +173,60 @@ model TaskDependency {
   @@index([successorId])
 }
 
+/// Phase 4: file attached to a task (disk-local storage in dev — storageKey is the relative path).
 model Attachment {
-  id           Int     @id @default(autoincrement())
-  fileURL      String
-  fileName     String?
-  taskId       Int
-  uploadedById Int
+  id         Int      @id @default(autoincrement())
+  taskId     Int
+  uploaderId Int
+  fileName   String
+  mimeType   String
+  /// Bytes on disk.
+  size       Int
+  storageKey String
+  createdAt  DateTime @default(now())
 
-  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  task     Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  uploader User @relation("AttachmentUploader", fields: [uploaderId], references: [id], onDelete: Cascade)
+
+  @@index([taskId, createdAt])
+}
+
+/// Phase 5: audit trail of task changes, rendered as the drawer timeline.
+model ActivityLog {
+  id        Int      @id @default(autoincrement())
+  taskId    Int
+  actorId   Int
+  /// created | updated | moved | deleted | commented
+  action    String
+  /// Field that changed (status, assigneeId, dueDate, ...); null for created/deleted.
+  field     String?
+  oldValue  String?
+  newValue  String?
+  createdAt DateTime @default(now())
+
+  task  Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  actor User @relation("ActivityActor", fields: [actorId], references: [id], onDelete: Cascade)
+
+  @@index([taskId, createdAt])
+}
+
+/// Phase 5: in-app notifications (assignment, comment, mention, due reminder).
+model Notification {
+  id        Int       @id @default(autoincrement())
+  userId    Int
+  /// ASSIGNED | COMMENTED | MENTIONED | DUE_REMINDER | DAILY_DIGEST
+  type      String
+  actorId   Int?
+  taskId    Int?
+  projectId Int?
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user  User  @relation("NotificationOwner", fields: [userId], references: [id], onDelete: Cascade)
+  actor User? @relation("NotificationActor", fields: [actorId], references: [id], onDelete: SetNull)
+  task  Task? @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@index([userId, readAt, createdAt])
 }
 
 model Comment {

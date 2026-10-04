@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import type { Db } from '../../shared/db/prisma';
 import { ForbiddenError, NotFoundError } from '../../shared/errors';
+import { logger } from '../../shared/logger';
 import { currentUserId, requireAuth } from '../../shared/auth/require-auth';
 import { handle } from '../../shared/http/handle';
 import { hasRole, type ProjectRole } from '../projects';
@@ -36,7 +37,23 @@ const toCommentDto = (c: CommentRow) => ({
   edited: c.updatedAt.getTime() - c.createdAt.getTime() > 1000,
 });
 
+export interface CommentCreatedHook {
+  (event: {
+    commentId: number;
+    authorId: number;
+    taskId: number;
+    projectId: number;
+    /** Task assignee — notified about comments on their tasks. */
+    assigneeId: number | null;
+    /** Project members @-mentioned in the body. */
+    mentionedUserIds: number[];
+  }): void;
+}
+
 export class CommentService {
+  /** Wired in the composition root (notifications + realtime broadcast). */
+  readonly hooks: { onCreated: CommentCreatedHook | null } = { onCreated: null };
+
   constructor(
     private readonly db: Db,
     private readonly tasks: TaskAccess,
@@ -53,11 +70,27 @@ export class CommentService {
   }
 
   async create(userId: number, taskId: number, body: string) {
-    await this.tasks.assertTaskAccess(userId, taskId, 'MEMBER');
-    return this.db.comment.create({
-      data: { taskId, authorId: userId, body: body.trim() },
+    const { projectId } = await this.tasks.assertTaskAccess(userId, taskId, 'MEMBER');
+    const trimmed = body.trim();
+    const created = await this.db.comment.create({
+      data: { taskId, authorId: userId, body: trimmed },
       include: { author: authorSelect },
     });
+
+    const task = await this.db.task.findUnique({
+      where: { id: taskId },
+      select: { assigneeId: true },
+    });
+    const mentionedUserIds = await this.findMentions(projectId, trimmed);
+    this.fireCreated({
+      commentId: created.id,
+      authorId: userId,
+      taskId,
+      projectId,
+      assigneeId: task?.assigneeId ?? null,
+      mentionedUserIds,
+    });
+    return created;
   }
 
   async update(userId: number, commentId: number, body: string) {
@@ -86,6 +119,25 @@ export class CommentService {
     const comment = await this.db.comment.findFirst({ where: { id: commentId, deletedAt: null } });
     if (!comment) throw new NotFoundError('COMMENT_NOT_FOUND', 'Comment not found');
     return comment;
+  }
+
+  /** '@Full Name' mentions, matched against project member names (case-insensitive). */
+  private async findMentions(projectId: number, body: string): Promise<number[]> {
+    const members = await this.db.projectMember.findMany({
+      where: { projectId },
+      select: { userId: true, user: { select: { name: true } } },
+    });
+    return members
+      .filter(({ user }) => body.toLowerCase().includes(`@${user.name.toLowerCase()}`))
+      .map(({ userId }) => userId);
+  }
+
+  private fireCreated(event: Parameters<CommentCreatedHook>[0]): void {
+    try {
+      this.hooks.onCreated?.(event);
+    } catch (err) {
+      logger.warn({ err }, 'comment onCreated hook failed');
+    }
   }
 }
 

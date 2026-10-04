@@ -20,6 +20,15 @@ const envSchema = z.object({
   JWT_REFRESH_SECRET: z.string().min(32, 'must be at least 32 characters'),
   ACCESS_TOKEN_TTL_MINUTES: z.coerce.number().int().positive().default(15),
   REFRESH_TOKEN_TTL_DAYS: z.coerce.number().int().positive().default(7),
+  // Phase 4: working-day calendar for scheduling (weekend days; Thu/Fri = Iran default).
+  WORKING_WEEKEND: z.string().default('THURSDAY,FRIDAY'),
+  // Phase 4: disk-local attachment storage.
+  UPLOAD_DIR: z.string().default('uploads'),
+  MAX_UPLOAD_MB: z.coerce.number().int().positive().default(10),
+  // Phase 5: realtime + background jobs.
+  REDIS_URL: z.string().default('redis://localhost:6379'),
+  JOBS_ENABLED: z
+    .preprocess((value) => (value === undefined || value === '' ? undefined : value === 'true' || value === '1'), z.boolean().default(true)),
 });
 
 const parsed = envSchema.safeParse(process.env);
