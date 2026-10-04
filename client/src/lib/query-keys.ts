@@ -29,7 +29,19 @@ export const qk = {
     byTask: (taskId: number) => ['schedule', 'task', taskId] as const,
   },
   dependencies: {
+    all: ['dependencies'] as const,
     byProject: (projectId: number) => ['dependencies', 'project', projectId] as const,
+  },
+  notifications: {
+    all: ['notifications'] as const,
+    list: (limit: number) => ['notifications', 'list', limit] as const,
+    unread: ['notifications', 'unread'] as const,
+  },
+  activity: {
+    byTask: (taskId: number) => ['activity', taskId] as const,
+  },
+  attachments: {
+    byTask: (taskId: number) => ['attachments', taskId] as const,
   },
   dashboard: ['dashboard'] as const,
 };

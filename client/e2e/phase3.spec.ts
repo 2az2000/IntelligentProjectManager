@@ -43,7 +43,8 @@ test('full collaboration flow: login → project → member → task → drag �
   // Stable assertion: the new member appears in the list (the toast may expire quickly).
   const membersList = page.locator('ul').filter({ hasText: 'sara@example.com' });
   await expect(membersList).toBeVisible();
-  await expect(page.getByText('سارا احمدی')).toBeVisible();
+  // exact: the success toast («سارا احمدی به پروژه اضافه شد») also contains the name.
+  await expect(page.getByText('سارا احمدی', { exact: true })).toBeVisible();
 
   // ---- create a task on the board --------------------------------------------------------
   await page.getByRole('navigation', { name: 'نماهای پروژه' }).getByRole('link', { name: 'بورد' }).click();

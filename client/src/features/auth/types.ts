@@ -6,4 +6,6 @@ export interface User {
   avatarUrl: string | null;
   locale: string;
   theme: string | null;
+  /** Whether reminder/digest emails are delivered to this account. */
+  notifyEmail: boolean;
 }

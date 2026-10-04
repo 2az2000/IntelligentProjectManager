@@ -40,3 +40,19 @@ export function formatPercent(ratio: number, locale: string): string {
     maximumFractionDigits: 0,
   }).format(ratio);
 }
+
+const BYTE_UNITS = ['B', 'KB', 'MB', 'GB'] as const;
+
+/** 1536 → "1.5 KB" (or Persian digits under the fa locale). */
+export function formatBytes(bytes: number, locale: string): string {
+  let value = bytes;
+  let unit = 0;
+  while (value >= 1024 && unit < BYTE_UNITS.length - 1) {
+    value /= 1024;
+    unit += 1;
+  }
+  const formatted = new Intl.NumberFormat(locale === 'fa' ? 'fa-IR' : 'en-US', {
+    maximumFractionDigits: value < 10 && unit > 0 ? 1 : 0,
+  }).format(value);
+  return `${formatted} ${BYTE_UNITS[unit]}`;
+}
