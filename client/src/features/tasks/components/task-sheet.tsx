@@ -23,6 +23,8 @@ import { ConfirmDialog } from '@/components/shared/confirm-dialog';
 import { DatePicker } from '@/components/shared/date-picker';
 import { ErrorState } from '@/components/shared/error-state';
 import { useCurrentUser } from '@/features/auth';
+import { ActivityTimeline } from '@/features/activity';
+import { AttachmentsSection } from '@/features/attachments';
 import { hasRole, useProject, useProjectMembers } from '@/features/projects';
 import { DependenciesSection } from '@/features/scheduling';
 import { useErrorMessage } from '@/hooks/use-error-message';
@@ -84,6 +86,8 @@ function TaskDetailBody({ task }: { task: TaskDetail }) {
   const canEdit = hasRole(role, 'MEMBER');
   const canDelete = canEdit && (task.author.id === me?.id || hasRole(role, 'ADMIN'));
   const assignable = members.filter((m) => hasRole(m.role, 'MEMBER')).map((m) => m.user);
+  const memberName = (id: string): string | null =>
+    members.find((m) => m.user.id === Number(id))?.user.name ?? null;
 
   const [title, setTitle] = useState(task.title);
   const [description, setDescription] = useState(task.description ?? '');
@@ -219,6 +223,10 @@ function TaskDetailBody({ task }: { task: TaskDetail }) {
 
       <Separator />
       <TaskComments taskId={task.id} canComment={canEdit} isAdmin={hasRole(role, 'ADMIN')} />
+      <Separator />
+      <AttachmentsSection taskId={task.id} canEdit={canEdit} />
+      <Separator />
+      <ActivityTimeline taskId={task.id} resolveUser={memberName} />
       <Separator />
 
       <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">

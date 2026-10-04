@@ -6,6 +6,7 @@ import { useLocale, useTranslations } from 'next-intl';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 import { UserMenu } from '@/features/auth';
+import { NotificationBell } from '@/features/notifications';
 import { Link } from '@/i18n/navigation';
 import { ModeToggle } from './mode-toggle';
 import { Sidebar } from './sidebar';
@@ -35,6 +36,7 @@ export function Navbar() {
         </Link>
 
         <div className="ms-auto flex items-center gap-1">
+          <NotificationBell />
           <ModeToggle />
           <UserMenu />
         </div>

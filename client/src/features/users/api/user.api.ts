@@ -13,6 +13,7 @@ export interface ProfileInput {
   avatarUrl?: string | null;
   locale?: 'fa' | 'en';
   theme?: 'light' | 'dark' | 'system' | null;
+  notifyEmail?: boolean;
 }
 
 export const userApi = {

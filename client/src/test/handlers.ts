@@ -1,4 +1,7 @@
 import { http, HttpResponse } from 'msw';
+import type { ActivityEntry } from '@/features/activity/types';
+import type { Attachment } from '@/features/attachments/types';
+import type { Notification } from '@/features/notifications/types';
 import type { Project, ProjectMember, Teammate } from '@/features/projects/types';
 import type { ScheduleResult } from '@/features/scheduling/types';
 import type { Task } from '@/features/tasks/types';
@@ -135,9 +138,71 @@ export const schedule: ScheduleResult = {
 
 export const dependencies = [{ predecessorId: 1, successorId: 2, type: 'FINISH_TO_START' as const }];
 
+export const notifications: Notification[] = [
+  {
+    id: 11,
+    type: 'ASSIGNED',
+    actor: sara,
+    task: { id: 1, title: 'Design hero section', projectId: 1, projectName: project.name },
+    read: false,
+    createdAt: '2026-09-30T09:00:00.000Z',
+  },
+  {
+    id: 12,
+    type: 'MENTIONED',
+    actor: sara,
+    task: { id: 1, title: 'Design hero section', projectId: 1, projectName: project.name },
+    read: true,
+    createdAt: '2026-09-29T15:00:00.000Z',
+  },
+];
+
+export const activityEntries: ActivityEntry[] = [
+  {
+    id: 21,
+    taskId: 1,
+    action: 'updated',
+    field: 'status',
+    oldValue: 'TODO',
+    newValue: 'IN_PROGRESS',
+    actor: sara,
+    createdAt: '2026-09-30T09:30:00.000Z',
+  },
+  {
+    id: 22,
+    taskId: 1,
+    action: 'created',
+    field: null,
+    oldValue: null,
+    newValue: null,
+    actor: admin,
+    createdAt: '2026-09-30T08:00:00.000Z',
+  },
+];
+
+export const attachments: Attachment[] = [
+  {
+    id: 31,
+    taskId: 1,
+    fileName: 'hero-brief.pdf',
+    mimeType: 'application/pdf',
+    size: 2048,
+    uploader: sara,
+    createdAt: '2026-09-30T09:00:00.000Z',
+  },
+];
+
 export const handlers = [
   http.get(`${API}/auth/me`, () =>
-    HttpResponse.json({ id: 1, email: 'admin@example.com', name: admin.name, avatarUrl: null, locale: 'fa', theme: null }),
+    HttpResponse.json({
+      id: 1,
+      email: 'admin@example.com',
+      name: admin.name,
+      avatarUrl: null,
+      locale: 'fa',
+      theme: null,
+      notifyEmail: true,
+    }),
   ),
   http.get(`${API}/projects`, () => HttpResponse.json([project])),
   http.get(`${API}/projects/1`, () => HttpResponse.json(project)),
@@ -151,4 +216,40 @@ export const handlers = [
   ),
   http.delete(`${API}/projects/1/dependencies/:predecessorId/:successorId`, () => new HttpResponse(null, { status: 204 })),
   http.get(`${API}/me/team`, () => HttpResponse.json([teammate])),
+
+  // ---- phase 5: notifications, activity, attachments ------------------------------------
+  http.get(`${API}/notifications`, () => HttpResponse.json(notifications)),
+  http.get(`${API}/notifications/unread-count`, () =>
+    HttpResponse.json({ count: notifications.filter((n) => !n.read).length }),
+  ),
+  http.post(`${API}/notifications/read-all`, () => new HttpResponse(null, { status: 204 })),
+  http.post(`${API}/notifications/:id/read`, () => new HttpResponse(null, { status: 204 })),
+  http.get(`${API}/tasks/1/activity`, () => HttpResponse.json(activityEntries)),
+  http.get(`${API}/tasks/1/attachments`, () => HttpResponse.json(attachments)),
+  http.post(`${API}/tasks/1/attachments`, () =>
+    HttpResponse.json(
+      {
+        ...attachments[0],
+        id: 32,
+        fileName: 'uploaded.txt',
+        mimeType: 'text/plain',
+        size: 13,
+        uploader: adminWithEmail,
+        createdAt: '2026-09-30T10:00:00.000Z',
+      } satisfies Attachment,
+      { status: 201 },
+    ),
+  ),
+  http.delete(`${API}/attachments/:id`, () => new HttpResponse(null, { status: 204 })),
+  http.patch(`${API}/users/me`, () =>
+    HttpResponse.json({
+      id: 1,
+      email: 'admin@example.com',
+      name: admin.name,
+      avatarUrl: null,
+      locale: 'fa',
+      theme: null,
+      notifyEmail: false,
+    }),
+  ),
 ];

@@ -248,6 +248,62 @@
     "save": "Save",
     "cancel": "Cancel"
   },
+  "Notifications": {
+    "title": "Notifications",
+    "loading": "Loading...",
+    "empty": "You're all caught up",
+    "markAllRead": "Mark all read",
+    "system": "System",
+    "generic": "You have a new notification",
+    "toast": {
+      "ASSIGNED": "A task was assigned to you",
+      "COMMENTED": "New comment on your task",
+      "MENTIONED": "You were mentioned in a comment",
+      "DUE_REMINDER": "Task due reminder",
+      "DAILY_DIGEST": "Your daily digest is ready"
+    },
+    "types": {
+      "ASSIGNED": "{actor} assigned you to \u201c{task}\u201d",
+      "COMMENTED": "{actor} commented on \u201c{task}\u201d",
+      "MENTIONED": "{actor} mentioned you in \u201c{task}\u201d",
+      "DUE_REMINDER": "\u201c{task}\u201d is due in less than 24 hours",
+      "DAILY_DIGEST": "Your daily digest is ready"
+    }
+  },
+  "Activity": {
+    "title": "Activity",
+    "empty": "No activity yet",
+    "emptyValue": "\u2014",
+    "unassigned": "Unassigned",
+    "actions": {
+      "created": "created this task",
+      "updated": "updated this task",
+      "moved": "moved this task",
+      "deleted": "deleted this task"
+    },
+    "fields": {
+      "title": "Title",
+      "status": "Status",
+      "priority": "Priority",
+      "assigneeId": "Assignee",
+      "startDate": "Start date",
+      "dueDate": "Due date",
+      "points": "Points",
+      "estimateHours": "Estimate"
+    }
+  },
+  "Attachments": {
+    "title": "Attachments",
+    "upload": "Upload file",
+    "uploaded": "File uploaded",
+    "empty": "No attachments yet",
+    "download": "Download",
+    "delete": "Delete attachment",
+    "tooLarge": "The file is larger than {max} MB"
+  },
+  "Realtime": {
+    "onlineCount": "{count} online"
+  },
   "Settings": {
     "title": "Settings",
     "subtitle": "Manage your account and application preferences.",
@@ -318,6 +374,7 @@
     "DEPENDENCY_CYCLE": "This dependency would create a cycle.",
     "DEPENDENCY_EXISTS": "This dependency already exists.",
     "DEPENDENCY_NOT_FOUND": "Dependency not found.",
+    "NOTIFICATION_NOT_FOUND": "Notification not found.",
     "ROUTE_NOT_FOUND": "The requested resource does not exist.",
     "INTERNAL_ERROR": "The server encountered an error. Please try again.",
     "UNKNOWN_ERROR": "Something went wrong."

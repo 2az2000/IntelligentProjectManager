@@ -15,6 +15,7 @@ import { cn } from '@/lib/utils';
 // Deep imports keep the scheduling → projects/tasks graph acyclic (the header imports our barrel).
 import { useProject } from '@/features/projects/hooks/use-projects';
 import { hasRole } from '@/features/projects/types';
+import { useProjectSocket } from '@/features/realtime';
 import { useApplySchedule, useDependencies, useSchedule } from '../hooks/use-schedule';
 import {
   buildDependencyArrows,
@@ -34,6 +35,9 @@ export function ProjectTimeline({ projectId }: { projectId: number }) {
   const { data: schedule, isPending, isError, error, refetch } = useSchedule(projectId);
   const { data: dependencies = [] } = useDependencies(projectId);
   const apply = useApplySchedule(projectId);
+
+  // Timeline bars refresh live while teammates move tasks around.
+  useProjectSocket(projectId);
 
   const canApply = hasRole(project?.myRole ?? 'VIEWER', 'MEMBER');
 

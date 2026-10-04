@@ -8,6 +8,7 @@ import { EmptyState } from '@/components/shared/empty-state';
 import { ErrorState } from '@/components/shared/error-state';
 import { BoardSkeleton, TableSkeleton } from '@/components/shared/loading-skeletons';
 import { hasRole, useProject, useProjectMembers } from '@/features/projects';
+import { PresenceAvatars, useProjectSocket } from '@/features/realtime';
 import { useProjectTasks } from '../hooks/use-tasks';
 import { useTaskSheet } from '../hooks/use-task-sheet';
 import type { TaskFilters } from '../types';
@@ -29,6 +30,9 @@ export function ProjectTasks({ projectId, view }: { projectId: number; view: 'bo
   const people = members.map((m) => m.user);
   const assignable = members.filter((m) => hasRole(m.role, 'MEMBER')).map((m) => m.user);
 
+  // Live updates + the "who is online" indicator for this project room.
+  useProjectSocket(projectId);
+
   if (isError) return <ErrorState error={error} onRetry={() => refetch()} />;
 
   const visible = tasks ? applyFilters(tasks, filters) : [];
@@ -37,7 +41,10 @@ export function ProjectTasks({ projectId, view }: { projectId: number; view: 'bo
     <div className="flex flex-1 flex-col">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <BoardFilters filters={filters} onChange={setFilters} members={people} />
-        {canEdit && <CreateTaskDialog projectId={projectId} members={assignable} />}
+        <div className="flex items-center gap-2">
+          <PresenceAvatars projectId={projectId} />
+          {canEdit && <CreateTaskDialog projectId={projectId} members={assignable} />}
+        </div>
       </div>
 
       {isPending ? (

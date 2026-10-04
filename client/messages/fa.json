@@ -248,6 +248,62 @@
     "save": "ذخیره",
     "cancel": "انصراف"
   },
+  "Notifications": {
+    "title": "اعلان‌ها",
+    "loading": "در حال بارگذاری...",
+    "empty": "اعلان جدیدی ندارید",
+    "markAllRead": "خواندن همه",
+    "system": "سیستم",
+    "generic": "اعلان جدید دارید",
+    "toast": {
+      "ASSIGNED": "تسکی به شما سپرده شد",
+      "COMMENTED": "روی تسک شما کامنت جدیدی ثبت شد",
+      "MENTIONED": "در یک کامنت از شما نام برده شد",
+      "DUE_REMINDER": "یادآوری مهلت تسک",
+      "DAILY_DIGEST": "خلاصه‌ی روزانه آماده است"
+    },
+    "types": {
+      "ASSIGNED": "{actor} تسک «{task}» را به شما سپرد",
+      "COMMENTED": "{actor} روی «{task}» کامنت گذاشت",
+      "MENTIONED": "{actor} در «{task}» از شما نام برد",
+      "DUE_REMINDER": "مهلت «{task}» کمتر از ۲۴ ساعت است",
+      "DAILY_DIGEST": "خلاصه‌ی روزانه امروز آماده است"
+    }
+  },
+  "Activity": {
+    "title": "تاریخچه فعالیت",
+    "empty": "فعالیتی ثبت نشده است",
+    "emptyValue": "—",
+    "unassigned": "بدون مسئول",
+    "actions": {
+      "created": "این تسک را ایجاد کرد",
+      "updated": "این تسک را ویرایش کرد",
+      "moved": "این تسک را جابه‌جا کرد",
+      "deleted": "این تسک را حذف کرد"
+    },
+    "fields": {
+      "title": "عنوان",
+      "status": "وضعیت",
+      "priority": "اولویت",
+      "assigneeId": "مسئول",
+      "startDate": "تاریخ شروع",
+      "dueDate": "مهلت",
+      "points": "امتیاز",
+      "estimateHours": "برآورد"
+    }
+  },
+  "Attachments": {
+    "title": "پیوست‌ها",
+    "upload": "بارگذاری فایل",
+    "uploaded": "فایل بارگذاری شد",
+    "empty": "پیوستی وجود ندارد",
+    "download": "دانلود",
+    "delete": "حذف پیوست",
+    "tooLarge": "حجم فایل بیش از {max} مگابایت است"
+  },
+  "Realtime": {
+    "onlineCount": "{count} نفر آنلاین"
+  },
   "Settings": {
     "title": "تنظیمات",
     "subtitle": "حساب کاربری و ترجیحات برنامه را مدیریت کنید.",
@@ -318,6 +374,7 @@
     "DEPENDENCY_CYCLE": "این وابستگی یک حلقه در زنجیره ایجاد می‌کند.",
     "DEPENDENCY_EXISTS": "این وابستگی از قبل وجود دارد.",
     "DEPENDENCY_NOT_FOUND": "وابستگی یافت نشد.",
+    "NOTIFICATION_NOT_FOUND": "اعلان پیدا نشد.",
     "ROUTE_NOT_FOUND": "منبع درخواست‌شده وجود ندارد.",
     "INTERNAL_ERROR": "خطایی در سرور رخ داد. دوباره تلاش کنید.",
     "UNKNOWN_ERROR": "خطایی رخ داد."

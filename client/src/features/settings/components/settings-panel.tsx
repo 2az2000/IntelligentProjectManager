@@ -9,6 +9,7 @@ import { toast } from 'sonner';
 import { z } from 'zod';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -37,6 +38,7 @@ export function SettingsPanel() {
     <div className="flex flex-col gap-6">
       <ProfileCard key={user.id} user={user} />
       <PreferencesCard />
+      <NotificationsCard notifyEmail={user.notifyEmail ?? true} />
       <PasswordCard />
     </div>
   );
@@ -197,6 +199,39 @@ const passwordSchema = z
     confirm: z.string(),
   })
   .refine((v) => v.newPassword === v.confirm, { message: 'passwordsDontMatch', path: ['confirm'] });
+
+/** Per-user email delivery toggle (reminders and daily digests). */
+function NotificationsCard({ notifyEmail }: { notifyEmail: boolean }) {
+  const t = useTranslations('Settings');
+  const toMessage = useErrorMessage();
+  const update = useUpdateProfile();
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>{t('notificationsTitle')}</CardTitle>
+        <CardDescription>{t('notificationsDescription')}</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <label className="flex cursor-pointer items-center gap-3">
+          <Checkbox
+            checked={notifyEmail}
+            onCheckedChange={(checked) =>
+              update.mutate(
+                { notifyEmail: checked === true },
+                { onSuccess: () => toast.success(t('saved')), onError: (e) => toast.error(toMessage(e)) },
+              )
+            }
+          />
+          <span className="flex flex-col gap-0.5">
+            <span className="text-sm font-medium">{t('emailNotifications')}</span>
+            <span className="text-sm text-muted-foreground">{t('emailNotificationsDescription')}</span>
+          </span>
+        </label>
+      </CardContent>
+    </Card>
+  );
+}
 
 function PasswordCard() {
   const t = useTranslations('Settings');
