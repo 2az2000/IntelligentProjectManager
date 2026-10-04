@@ -1,7 +1,9 @@
 import { prisma, type Db } from '../../../shared/db/prisma';
 import { ConflictError, NotFoundError, ValidationError } from '../../../shared/errors';
+import { env } from '../../../config/env';
 import type { ProjectRole } from '../../projects';
 import { buildSchedule, type ScheduleResult, type ScheduleTask } from './schedule';
+import { addWorkingHours, parseWeekend } from '../domain/work-calendar';
 
 /** What scheduling needs from the projects module. */
 export interface ProjectAccess {
@@ -52,12 +54,14 @@ export class ScheduleService {
     private readonly db: Db = prisma,
     private readonly access: ProjectAccess,
     private readonly clock: () => Date = () => new Date(),
+    /** JS getDay() weekend values — Iranian Thu/Fri by default. */
+    private readonly weekend: Set<number> = parseWeekend(env.WORKING_WEEKEND),
   ) {}
 
   async getSchedule(userId: number, projectId: number): Promise<ScheduleResult> {
     await this.access.assertRole(projectId, userId, 'VIEWER');
     const { tasks, deps } = await loadScheduleInput(this.db, projectId);
-    return buildSchedule(tasks, deps);
+    return buildSchedule(tasks, deps, this.weekend);
   }
 
   async getTaskSchedule(userId: number, taskId: number): Promise<ScheduleResult> {
@@ -76,7 +80,7 @@ export class ScheduleService {
   async applySchedule(userId: number, projectId: number): Promise<ScheduleResult> {
     await this.access.assertRole(projectId, userId, 'MEMBER');
     const { tasks, deps } = await loadScheduleInput(this.db, projectId);
-    const schedule = buildSchedule(tasks, deps);
+    const schedule = buildSchedule(tasks, deps, this.weekend);
     const now = this.clock();
     const project = await this.db.project.findFirst({
       where: { id: projectId, deletedAt: null },
@@ -86,8 +90,8 @@ export class ScheduleService {
 
     for (const t of schedule.tasks) {
       const input = tasks.find((x) => x.id === t.id)!;
-      const start = addHours(anchor, t.earliestStart ?? 0);
-      const finish = addHours(start, t.estimateHours ?? 0);
+      const start = addWorkingHours(anchor, t.earliestStart ?? 0, this.weekend);
+      const finish = addWorkingHours(start, t.estimateHours ?? 0, this.weekend);
       const needsUpdate = input.dueDate === null || new Date(input.dueDate) < now;
       if (!needsUpdate) continue;
       await this.db.task.update({
@@ -192,9 +196,6 @@ export class DependencyService {
     if (deleted.count === 0) throw new NotFoundError('DEPENDENCY_NOT_FOUND', 'Dependency not found');
   }
 }
-
-const HOUR = 60 * 60 * 1000;
-const addHours = (date: Date, hours: number) => new Date(date.getTime() + hours * HOUR);
 
 /** Same DFS as scheduling/domain/dependency-resolver.wouldCreateCycle, over plain edge tuples. */
 function wouldCreateCycle(

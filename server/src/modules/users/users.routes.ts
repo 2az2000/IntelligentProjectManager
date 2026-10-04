@@ -13,6 +13,7 @@ const updateMeBody = z
     avatarUrl: z.url({ protocol: /^https?$/ }).max(500).nullable(),
     locale: z.enum(LOCALES),
     theme: z.enum(THEMES).nullable(),
+    notifyEmail: z.boolean(),
   })
   .partial()
   .strict();

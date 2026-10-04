@@ -19,12 +19,18 @@ services:
       timeout: 3s
       retries: 10
 
-  # Enabled in Phase 5 (BullMQ, Socket.IO adapter)
-  # redis:
-  #   image: redis:7-alpine
-  #   container_name: pm-redis
-  #   ports:
-  #     - '6379:6379'
+  # Phase 5: BullMQ (due reminders, daily digest). Socket.IO stays in-process.
+  redis:
+    image: redis:7-alpine
+    container_name: pm-redis
+    restart: unless-stopped
+    ports:
+      - '6379:6379'
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 10
 
 volumes:
   pgdata:
