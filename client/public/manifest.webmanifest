@@ -1,0 +1,17 @@
+{
+  "name": "Intelligent Project Management",
+  "short_name": "ManageSys",
+  "description": "Enterprise-grade project management with Gantt scheduling, realtime boards and notifications",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#09090b",
+  "theme_color": "#09090b",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

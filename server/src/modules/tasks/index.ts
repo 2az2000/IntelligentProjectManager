@@ -15,4 +15,5 @@ export function createTasksModule(deps: { db: Db; projects: ProjectAccess }) {
 
 export type { TaskService } from './application/task.service';
 export { TASK_STATUSES, TASK_PRIORITIES } from './domain/task.entity';
+export { createTaskBody, listTasksQuery, moveTaskBody, updateTaskBody } from './http/task.schemas';
 export type { TaskStatus, TaskPriority } from './domain/task.entity';

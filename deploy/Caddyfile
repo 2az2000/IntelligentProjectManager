@@ -1,0 +1,19 @@
+# Reverse proxy: one origin for the client, the API and websockets.
+{$SITE_ADDRESS} {
+	encode zstd gzip
+
+	# Socket.IO (handshake + polling fallback + websocket upgrades).
+	handle /socket.io* {
+		reverse_proxy server:8000
+	}
+
+	# REST API — strip the /api prefix the client was built with.
+	handle_path /api/* {
+		reverse_proxy server:8000
+	}
+
+	# Everything else: the Next.js client.
+	handle {
+		reverse_proxy client:3000
+	}
+}

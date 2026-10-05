@@ -34,6 +34,7 @@ export interface MoveTaskInput {
 const taskNotFound = () => new NotFoundError('TASK_NOT_FOUND', 'Task not found');
 
 export interface TaskChangedHook {
+  /** Returning a promise lets the caller await activity/notifications before responding. */
   (event: {
     actorId: number;
     projectId: number;
@@ -42,7 +43,7 @@ export interface TaskChangedHook {
     changes?: TaskFieldChange[];
     /** New assignee — should receive an in-app notification. */
     notifyUserIds?: number[];
-  }): void;
+  }): void | Promise<void>;
 }
 
 /** Fields tracked in the activity log / realtime payload. */
@@ -90,7 +91,7 @@ export class TaskService {
     const created = await this.tasks.create(
       Task.validateNew({ ...input, authorId: userId }, position, this.clock()),
     );
-    this.fire({ actorId: userId, projectId: input.projectId, taskId: created.id, kind: 'created' });
+    await this.fire({ actorId: userId, projectId: input.projectId, taskId: created.id, kind: 'created' });
     return created;
   }
 
@@ -110,7 +111,7 @@ export class TaskService {
     }
     const updated = await this.tasks.update(taskId, patch);
     const assigneeChanged = changes.assigneeId != null && changes.assigneeId !== snapshot.assigneeId;
-    this.fire({
+    await this.fire({
       actorId: userId,
       projectId: updated.projectId,
       taskId: updated.id,
@@ -134,7 +135,7 @@ export class TaskService {
     const previousStatus = task.status; // applyChanges mutates the entity in place
     const patch = task.applyChanges({ status: input.status }, this.clock());
     const moved = await this.tasks.update(taskId, { ...patch, status: input.status, position });
-    this.fire({
+    await this.fire({
       actorId: userId,
       projectId: moved.projectId,
       taskId: moved.id,
@@ -151,7 +152,7 @@ export class TaskService {
       throw new ForbiddenError('INSUFFICIENT_ROLE', 'Only the author or a project admin can delete this task');
     }
     await this.tasks.softDelete(taskId, this.clock());
-    this.fire({ actorId: userId, projectId: task.projectId, taskId, kind: 'deleted' });
+    await this.fire({ actorId: userId, projectId: task.projectId, taskId, kind: 'deleted' });
   }
 
   /** Tasks assigned to the user across all their projects (My Tasks, calendar). */
@@ -179,9 +180,11 @@ export class TaskService {
   // ---- helpers ----------------------------------------------------------------------------
 
   /** Announces a committed mutation to the composition root (activity/realtime/jobs). */
-  private fire(event: Parameters<TaskChangedHook>[0]): void {
+  private async fire(event: Parameters<TaskChangedHook>[0]): Promise<void> {
     try {
-      this.hooks.onChanged?.(event);
+      // A promise result is awaited so side effects land before the HTTP response;
+      // rejections and sync throws are logged, never propagated to the mutation.
+      await this.hooks.onChanged?.(event);
     } catch (err) {
       // Hooks must never break the mutation that produced them.
       logger.warn({ err }, 'task onChanged hook failed');

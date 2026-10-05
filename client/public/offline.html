@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>آفلاین — Offline</title>
+    <style>
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        font-family: system-ui, Vazirmatn, sans-serif;
+        background: #09090b;
+        color: #fafafa;
+        text-align: center;
+      }
+      main {
+        padding: 2rem;
+        max-width: 28rem;
+      }
+      h1 { font-size: 1.5rem; margin: 0 0 0.75rem; }
+      p { color: #a1a1aa; margin: 0.25rem 0; line-height: 1.8; }
+      button {
+        margin-top: 1.5rem;
+        padding: 0.6rem 1.4rem;
+        border: 1px solid #3f3f46;
+        border-radius: 0.5rem;
+        background: transparent;
+        color: #fafafa;
+        font: inherit;
+        cursor: pointer;
+      }
+      button:hover { background: #27272a; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>اتصال اینترنت قطع است</h1>
+      <p>صفحه‌های دیده‌شده‌ی اخیر در دسترس‌اند؛ برای ادامه به اینترنت وصل شوید.</p>
+      <p dir="ltr" lang="en">You are offline. Recently viewed pages stay available — reconnect to continue.</p>
+      <button onclick="location.reload()">تلاش دوباره / Retry</button>
+    </main>
+  </body>
+</html>

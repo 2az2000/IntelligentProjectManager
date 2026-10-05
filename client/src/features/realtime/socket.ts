@@ -58,7 +58,12 @@ let socket: Socket | null = null;
 export function getRealtimeSocket(): Socket | null {
   if (typeof window === 'undefined') return null;
   if (!socket) {
-    socket = io(process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000', {
+    // NEXT_PUBLIC_API_URL is either absolute (dev: http://localhost:8000) or a
+    // same-domain base like "/api" behind the reverse proxy; in the latter case
+    // the socket must connect to the page origin with the prefixed engine path.
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+    socket = io(apiUrl.startsWith('/') ? window.location.origin : apiUrl, {
+      path: process.env.NEXT_PUBLIC_SOCKET_PATH || '/socket.io',
       withCredentials: true,
       autoConnect: true,
       reconnectionAttempts: 5,
