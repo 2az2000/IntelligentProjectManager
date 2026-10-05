@@ -7,7 +7,7 @@
 
 ## 📍 وضعیت فعلی
 
-> **فاز جاری: ۴ — Smart scheduling** · آخرین به‌روزرسانی: 2026-09-30
+> **فاز جاری: ۷ — Advanced features** · آخرین به‌روزرسانی: 2026-10-05
 > این بخش بعد از اتمام هر فاز به‌روز می‌شود. جزئیات هر تغییر در [گزارش پیشرفت](#-گزارش-پیشرفت-changelog) انتهای همین سند.
 
 | فاز | عنوان | هدف یک‌خطی | تخمین | وضعیت |
@@ -16,9 +16,9 @@
 | ۱ | Restructure | کد فعلی به ساختار هدف منتقل شود، بدون تغییر رفتار | ۴–۵ روز | ✅ تمام |
 | ۲ | Auth & Users | ورود/ثبت‌نام، عضویت در پروژه، حذف همه‌ی کاربرهای هاردکد | ۵–۶ روز | ✅ تمام |
 | ۳ | Complete current features | هر دکمه، لینک و صفحه‌ی موجود واقعاً کار کند | ۱۰–۱۴ روز | ✅ تمام |
-| ۴ | Smart scheduling | Dependencyها، CPM، Timeline/Gantt، فایل پیوست | ۷–۱۰ روز | 🟡 در حال انجام |
-| ۵ | Real-time & Notifications | board زنده، اعلان، activity log، jobهای پس‌زمینه | ۶–۸ روز | ⏳ |
-| ۶ | Production-ready | تست، CI/CD، Docker، امنیت، مستندات API | ۵–۷ روز | ⏳ |
+| ۴ | Smart scheduling | Dependencyها، CPM، Timeline/Gantt، فایل پیوست | ۷–۱۰ روز | ✅ تمام |
+| ۵ | Real-time & Notifications | board زنده، اعلان، activity log، jobهای پس‌زمینه | ۶–۸ روز | ✅ تمام |
+| ۶ | Production-ready | تست، CI/CD، Docker، امنیت، مستندات API | ۵–۷ روز | ✅ تمام (Sentry به بهبودها منتقل شد) |
 | ۷ | Advanced features | تقویم شمسی، Command Palette، Workload heatmap، پیش‌بینی Monte Carlo، دستیار AI | ۱۰–۱۵ روز | ⏳ |
 
 راهنمای وضعیت: ✅ تمام · 🟡 در حال انجام · ⏳ شروع نشده · ⚠️ ناقص (توضیح در changelog)
@@ -225,18 +225,18 @@
 
 ## فاز ۶ — Production-ready
 
-- [ ] تست: پوشش domain/scheduling ≥ ۸۰٪؛ integration برای همه‌ی endpointها؛ Playwright برای flowهای اصلی در هر دو زبان.
-- [ ] **CI (GitHub Actions)**: install → lint → typecheck → test (با Postgres service) → build، برای client و server.
-- [ ] **Docker**: Dockerfile چندمرحله‌ای برای server (`node dist/main.js`، کاربر non-root) و client (`output: 'standalone'`)؛ `docker-compose.prod.yml` + reverse proxy (Caddy/Nginx) با HTTPS؛ API پشت همان دامنه (`/api`).
-- [ ] **امنیت**: helmet با CSP، CSRF (double-submit token یا `SameSite=Strict` + چک Origin)، rate-limit سراسری، audit وابستگی‌ها (`npm audit` در CI)، محدودیت حجم body.
-- [ ] **OpenAPI**: تولید از Zod (`@asteasolutions/zod-to-openapi`) + Swagger UI در `/docs` (فقط غیر production یا با auth).
-- [ ] **Observability**: Sentry در client و server؛ لاگ JSON؛ healthcheck در Docker.
-- [ ] **PWA**: service worker فقط برای assetهای استاتیک و صفحه‌ی offline.
-- [ ] backup خودکار دیتابیس.
+- [x] تست: پوشش domain/scheduling = ۹۴٪ (هدف ≥ ۸۰٪) ✓؛ integration برای همه‌ی endpointها ✓ (۸ تست امنیتی/docs در security.int + integrationهای فاز ۴/۵)؛ Playwright فاز ۳/۴/۵ ✓.
+- [x] **CI (GitHub Actions)**: install → lint → typecheck → test (با Postgres service) → build، برای client و server + گیت `npm audit --omit=dev` (سطح critical برای server — ۲ high داخل وابستگی‌های prisma@7 است و فقط با downgrade؛ سطح high برای client — next به 16.3.8 ارتقا یافت).
+- [x] **Docker**: Dockerfile چندمرحله‌ای برای server (non-root + healthcheck + `prisma migrate deploy` هنگام بوت) و client (`output: 'standalone'`)؛ `docker-compose.prod.yml` + Caddy با HTTPS خودکار؛ API پشت همان دامنه (`/api` + `/api/socket.io`) + سرویس `db-backup`.
+- [x] **امنیت**: helmet با CSP (سازگار با Swagger UI)، CSRF با چک Origin/Referer روی متدهای ناامن (403 `CSRF_ORIGIN_MISMATCH`؛ مبنا: CORS_ORIGIN)، rate-limit سراسری `RATE_LIMIT_PER_MINUTE`، audit وابستگی‌ها در CI، محدودیت حجم body (۱MB از فاز ۰). Smoke واقعی: Origin شیطانی ⇒ 403.
+- [x] **OpenAPI**: تولید از Zod (`@asteasolutions/zod-to-openapi`) + Swagger UI در `/docs` و `/docs.json` (فقط غیر production — در prod 404). اسکیماهای request همان Zodهای endpointها هستند ⇒ مستندات هرگز از کد عقب نمی‌ماند. ~۴۰ مسیر مستند شد.
+- [x] لاگ JSON (pino + requestId، از فاز ۰) + healthcheck در Docker برای server/client/postgres/redis ✓ — **Sentry عمداً به فاز بهبودها منتقل شد** (نیاز به DSN و حساب سرویس دارد؛ راه‌حل عملی در [03-IMPROVEMENTS.md](03-IMPROVEMENTS.md)).
+- [x] **PWA**: `manifest.webmanifest` + service worker (cache-first برای `/_next/static`، network-first برای صفحات، fallback به `offline.html` دوزبانه، هرگز `/api` و `/socket.io` را کش نمی‌کند) + ثبت فقط در build پروداکشن.
+- [x] backup خودکار دیتابیس: سرویس `db-backup` (pg_dump -Fc هر ۲۴ ساعت، نگهداری ۱۴ نسخه‌ی آخر در `./backups`).
 
 **✅ Definition of Done**
-- [ ] یک `docker compose -f docker-compose.prod.yml up` نسخه‌ی production را با HTTPS بالا می‌آورد.
-- [ ] هر PR بدون CI سبز قابل merge نیست.
+- [x] یک `docker compose -f docker-compose.prod.yml up` نسخه‌ی production را بالا می‌آورد — smoke واقعی: کلاینت 307 → fa، `/api/health` = ok، register/me با cookie، Swagger 404 در prod، CSRF 403 ✓ (HTTPS خودکار Caddy با دامنه‌ی واقعی فعال می‌شود).
+- [x] هر PR بدون CI سبز قابل merge نیست (workflow روی push/PR به main).
 
 ---
 
@@ -246,6 +246,38 @@
 ---
 
 ## 📝 گزارش پیشرفت (Changelog)
+
+### 2026-10-05 — فاز ۶ (Production-ready) تمام شد ✅
+
+**CI**
+- `.github/workflows/ci.yml`: برای server (lint/typecheck/test با سرویس Postgres 16/build/audit) و client (lint/typecheck/build/audit) — هر PR و push به main.
+- `npm audit fix` اعمال شد؛ `next` → 16.3.8 (رفع critical DoS/request smuggling)؛ `@prisma/client` هم‌تراز با CLI در 7.10.0 (رفع خطای wasm در بیلد Docker).
+
+**امنیت (server)**
+- `origin-guard.ts`: چک Origin/Referer روی POST/PUT/PATCH/DELETE ⇒ 403 `CSRF_ORIGIN_MISMATCH` (آزمون‌شده در تست و استک واقعی).
+- rate-limit سراسری (`RATE_LIMIT_PER_MINUTE=300`، skip در test و /health) + limiter قبلی احراز هویت.
+- helmet با CSP سفارشی برای سازگاری Swagger UI.
+- index.ts هر ماژول اسکیماهای HTTP را هم export می‌کند (مرز ماژول‌ها حفظ).
+
+**OpenAPI**
+- `shared/openapi.ts` با zod-to-openapi: ~۴۰ مسیر، اسکیماهای DTO و Error؛ Swagger UI در `/docs` + `/docs.json` فقط خارج production.
+- ۸ تست جدید (security.int.test.ts): هدرهای helmet، گارد CSRF (۵ حالت)، اعتبار سند OpenAPI.
+
+**رفع باگ race نوتیفیکیشن/اکتیویتی (Prisma 7.10)**
+- hookهای `tasks.onChanged` و `comments.onCreated` حالا awaitable‌اند و composition root در `app.ts` آن‌ها را await می‌کند ⇒ اکتیویتی و نوتیفیکیشن قبل از پاسخ HTTP ثبت می‌شوند (BullMQ همچنان fire-and-forget). `activity.record` هم async شد.
+
+**Docker + Production stack**
+- `server/Dockerfile` (چندمرحله‌ای، non-root، healthcheck، migrate deploy در بوت، کپی prisma.config.ts) و `client/Dockerfile` (standalone، non-root، healthcheck، build args `/api`).
+- `docker-compose.prod.yml`: caddy + client + server + postgres + redis (AOF) + **db-backup** (pg_dump روزانه، ۱۴ نسخه)؛ `deploy/Caddyfile` (مسیر `/api` و `/socket.io`)؛ `.env.prod.example`.
+- Smoke واقعی: health ok، register/me با cookie، Swagger 404، CSRF 403، db-backup فعال.
+
+**کلاینت**
+- `output: standalone`؛ PWA (manifest + sw.js + offline.html + ثبت production-only)؛ socket به مسیر نسبی `/api/socket.io` پشت پراکسی متصل می‌شود؛ `NEXT_PUBLIC_SOCKET_PATH` جدید.
+- تأیید: typecheck/lint سبز (همان ۱ warning قدیمی)، **۶۶/۶۶ تست**، build موفق، **۶/۶ E2E** سبز.
+
+**server**: typecheck/lint سبز، **۸۷/۸۷ تست**، coverage مسیر بحرانی scheduling = ۹۴٪ (هدف فاز: ≥۸۰٪).
+
+**باقی‌مانده‌ی آگاهانه از فاز ۶:** Sentry (به 03-IMPROVEMENTS منتقل شد) و سوییچ storage پیوست‌ها به MinIO (اختیاری؛ دیسک محلی با volume کار می‌کند).
 
 ### 2026-10-04 — فاز ۴ کامل شد ✅ + فاز ۵ کامل شد ✅
 
