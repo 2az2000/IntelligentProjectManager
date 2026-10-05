@@ -1,0 +1,72 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# Phase 6: no PR merges without green lint + typecheck + tests + build.
+jobs:
+  server:
+    name: server (lint · typecheck · test · build)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: server
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: pm
+          POSTGRES_PASSWORD: pm
+          POSTGRES_DB: projectmanagement_test
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U pm -d projectmanagement_test"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgres://pm:pm@localhost:5433/projectmanagement_test
+      JWT_ACCESS_SECRET: ci-only-access-secret-with-32-chars!!
+      JWT_REFRESH_SECRET: ci-only-refresh-secret-with-32-chars!
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: server/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+      # 2 high advisories remain inside prisma@7 transitive deps (hono/deepmerge-ts);
+      # fixing them requires downgrading Prisma to 6, so the gate is critical-only.
+      - name: npm audit (runtime dependencies)
+        run: npm audit --omit=dev --audit-level=critical
+
+  client:
+    name: client (lint · typecheck · build)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: client
+    env:
+      NEXT_PUBLIC_API_URL: http://localhost:8000
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: client/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm run build
+      - name: npm audit (runtime dependencies)
+        run: npm audit --omit=dev --audit-level=high

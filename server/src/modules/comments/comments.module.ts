@@ -47,7 +47,7 @@ export interface CommentCreatedHook {
     assigneeId: number | null;
     /** Project members @-mentioned in the body. */
     mentionedUserIds: number[];
-  }): void;
+  }): void | Promise<void>;
 }
 
 export class CommentService {
@@ -82,7 +82,7 @@ export class CommentService {
       select: { assigneeId: true },
     });
     const mentionedUserIds = await this.findMentions(projectId, trimmed);
-    this.fireCreated({
+    await this.fireCreated({
       commentId: created.id,
       authorId: userId,
       taskId,
@@ -132,9 +132,10 @@ export class CommentService {
       .map(({ userId }) => userId);
   }
 
-  private fireCreated(event: Parameters<CommentCreatedHook>[0]): void {
+  private async fireCreated(event: Parameters<CommentCreatedHook>[0]): Promise<void> {
     try {
-      this.hooks.onCreated?.(event);
+      // Awaited by create() so notifications land before the HTTP response.
+      await this.hooks.onCreated?.(event);
     } catch (err) {
       logger.warn({ err }, 'comment onCreated hook failed');
     }

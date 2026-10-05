@@ -10,3 +10,4 @@ export function createAuthModule(deps: { db: Db; users: UsersService }) {
 }
 
 export { hashPassword } from './password';
+export { loginBody, registerBody, changePasswordBody } from './auth.schemas';

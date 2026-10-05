@@ -11,4 +11,5 @@ export function createProjectsModule(deps: { db: Db; users: UserLookup }) {
 export type { ProjectService } from './application/project.service';
 export type { Project } from './domain/project.entity';
 export { PROJECT_ROLES, hasRole } from './domain/project-role';
+export { addMemberBody, createProjectBody, updateMemberBody, updateProjectBody } from './http/project.schemas';
 export type { ProjectRole } from './domain/project-role';

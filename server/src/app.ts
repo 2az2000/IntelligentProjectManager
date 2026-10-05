@@ -2,12 +2,17 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import cookieParser from 'cookie-parser';
+import rateLimit from 'express-rate-limit';
+import swaggerUi from 'swagger-ui-express';
 import { randomUUID } from 'node:crypto';
 import { pinoHttp } from 'pino-http';
-import { env } from './config/env';
+import { env, isProduction, isTest } from './config/env';
 import { logger } from './shared/logger';
 import { prisma, type Db } from './shared/db/prisma';
+import { AppError } from './shared/errors';
 import { errorHandler, notFoundHandler } from './shared/http/error-handler';
+import { originGuard } from './shared/http/origin-guard';
+import { openapiDocument } from './shared/openapi';
 import { createAuthModule } from './modules/auth';
 import { createUsersModule } from './modules/users';
 import { createProjectsModule } from './modules/projects';
@@ -43,10 +48,37 @@ export function createApp(deps: { db: Db } = { db: prisma }) {
       },
     }),
   );
-  app.use(helmet());
+  app.use(
+    helmet({
+      // API + Swagger UI at /docs: swagger-ui-express ships inline bootstrap scripts/styles.
+      contentSecurityPolicy: {
+        useDefaults: true,
+        directives: {
+          'script-src': ["'self'", "'unsafe-inline'"],
+          'style-src': ["'self'", "'unsafe-inline'"],
+          'img-src': ["'self'", 'data:'],
+          'connect-src': ["'self'"],
+        },
+      },
+    }),
+  );
   app.use(cors({ origin: env.CORS_ORIGIN, credentials: true }));
   app.use(express.json({ limit: '1mb' }));
   app.use(cookieParser());
+
+  // Phase 6: CSRF defense-in-depth (cookie auth) + a global per-IP request budget.
+  app.use(originGuard);
+  app.use(
+    rateLimit({
+      windowMs: 60 * 1000,
+      limit: env.RATE_LIMIT_PER_MINUTE,
+      standardHeaders: 'draft-8',
+      legacyHeaders: false,
+      skip: (req) => req.path === '/health' || isTest,
+      handler: (_req, _res, next) =>
+        next(new AppError(429, 'RATE_LIMITED', 'Too many requests, please slow down')),
+    }),
+  );
 
   app.get('/health', async (_req, res) => {
     let dbStatus: 'ok' | 'error' = 'ok';
@@ -78,8 +110,10 @@ export function createApp(deps: { db: Db } = { db: prisma }) {
     tasks.service.unassignUser(projectId, userId);
 
   // Phase 5: activity log + realtime broadcast + assignment notifications + reminder jobs.
-  tasks.service.hooks.onChanged = (event) => {
-    activity.service.record({ actorId: event.actorId, taskId: event.taskId, action: event.kind, changes: event.changes });
+  // Awaited by the task service: activity rows and notifications exist before the
+  // HTTP response; only the BullMQ reminder scheduling stays fire-and-forget.
+  tasks.service.hooks.onChanged = async (event) => {
+    await activity.service.record({ actorId: event.actorId, taskId: event.taskId, action: event.kind, changes: event.changes });
     publish('task:changed', {
       projectId: event.projectId,
       taskId: event.taskId,
@@ -88,7 +122,7 @@ export function createApp(deps: { db: Db } = { db: prisma }) {
       changes: event.changes,
     });
     for (const userId of event.notifyUserIds ?? []) {
-      notifications.service.safeCreate({
+      await notifications.service.create({
         userId,
         type: 'ASSIGNED',
         actorId: event.actorId,
@@ -101,7 +135,7 @@ export function createApp(deps: { db: Db } = { db: prisma }) {
     }
   };
 
-  comments.service.hooks.onCreated = (event) => {
+  comments.service.hooks.onCreated = async (event) => {
     publish('comment:created', {
       projectId: event.projectId,
       taskId: event.taskId,
@@ -110,7 +144,7 @@ export function createApp(deps: { db: Db } = { db: prisma }) {
       mentionedUserIds: event.mentionedUserIds,
     });
     if (event.assigneeId && event.assigneeId !== event.authorId) {
-      notifications.service.safeCreate({
+      await notifications.service.create({
         userId: event.assigneeId,
         type: 'COMMENTED',
         actorId: event.authorId,
@@ -120,7 +154,7 @@ export function createApp(deps: { db: Db } = { db: prisma }) {
     }
     for (const userId of event.mentionedUserIds) {
       if (userId === event.authorId) continue;
-      notifications.service.safeCreate({
+      await notifications.service.create({
         userId,
         type: 'MENTIONED',
         actorId: event.authorId,
@@ -146,6 +180,12 @@ export function createApp(deps: { db: Db } = { db: prisma }) {
   app.use('/tasks/:taskId/activity', activity.activityRouter);
   app.use('/attachments', attachments.attachmentsRouter);
   app.use('/notifications', notifications.notificationsRouter);
+
+  // Phase 6: interactive API docs (Swagger UI) outside production only.
+  if (!isProduction) {
+    app.get('/docs.json', (_req, res) => res.json(openapiDocument));
+    app.use('/docs', swaggerUi.serve, swaggerUi.setup(openapiDocument));
+  }
 
   app.use(notFoundHandler);
   app.use(errorHandler);

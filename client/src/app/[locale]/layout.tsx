@@ -4,6 +4,7 @@ import { Geist, Geist_Mono, Vazirmatn } from 'next/font/google';
 import { hasLocale, NextIntlClientProvider } from 'next-intl';
 import { setRequestLocale } from 'next-intl/server';
 import { Providers } from '@/components/layout/providers';
+import { RegisterServiceWorker } from '@/components/pwa/register-sw';
 import { routing } from '@/i18n/routing';
 import { cn } from '@/lib/utils';
 import '../globals.css';
@@ -15,6 +16,7 @@ const vazirmatn = Vazirmatn({ variable: '--font-vazirmatn', subsets: ['arabic', 
 export const metadata: Metadata = {
   title: 'Intelligent Project Management',
   description: 'Enterprise Grade Project Management System',
+  manifest: '/manifest.webmanifest',
 };
 
 export function generateStaticParams() {
@@ -43,6 +45,7 @@ export default async function LocaleLayout({
         <NextIntlClientProvider>
           <Providers>{children}</Providers>
         </NextIntlClientProvider>
+        <RegisterServiceWorker />
       </body>
     </html>
   );

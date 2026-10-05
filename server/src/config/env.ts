@@ -25,6 +25,8 @@ const envSchema = z.object({
   // Phase 4: disk-local attachment storage.
   UPLOAD_DIR: z.string().default('uploads'),
   MAX_UPLOAD_MB: z.coerce.number().int().positive().default(10),
+  // Phase 6: global per-IP request budget (the auth endpoints have their own tighter limiter).
+  RATE_LIMIT_PER_MINUTE: z.coerce.number().int().positive().default(300),
   // Phase 5: realtime + background jobs.
   REDIS_URL: z.string().default('redis://localhost:6379'),
   JOBS_ENABLED: z

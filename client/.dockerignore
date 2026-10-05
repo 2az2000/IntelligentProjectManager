@@ -1,0 +1,10 @@
+node_modules
+.next
+.env
+.env.*
+coverage
+e2e
+playwright-report
+test-results
+*.log
+eslint.config.*

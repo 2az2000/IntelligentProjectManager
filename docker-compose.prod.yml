@@ -1,0 +1,113 @@
+# Phase 6: single-domain production stack — Caddy terminates TLS and proxies
+# /api/* and /socket.io to the API, everything else to the Next.js client.
+# Usage:
+#   cp .env.prod.example .env  (set PUBLIC_URL + JWT secrets + DB credentials)
+#   docker compose -f docker-compose.prod.yml up -d --build
+name: pm-prod
+
+services:
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - '80:80'
+      - '443:443'
+    environment:
+      SITE_ADDRESS: ${PUBLIC_URL:-localhost}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - client
+      - server
+
+  client:
+    build:
+      context: ./client
+      args:
+        NEXT_PUBLIC_API_URL: /api
+        NEXT_PUBLIC_SOCKET_PATH: /api/socket.io
+    restart: unless-stopped
+    depends_on:
+      - server
+
+  server:
+    build: ./server
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 8000
+      DATABASE_URL: postgres://${POSTGRES_USER:?set in .env}:${POSTGRES_PASSWORD:?set in .env}@postgres:5432/${POSTGRES_DB:?set in .env}
+      REDIS_URL: redis://redis:6379
+      JOBS_ENABLED: 'true'
+      # Same public origin the browser uses — also the CSRF origin allowlist.
+      CORS_ORIGIN: ${PUBLIC_URL:-https://localhost}
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:?set in .env}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:?set in .env}
+      UPLOAD_DIR: /app/uploads
+      RATE_LIMIT_PER_MINUTE: ${RATE_LIMIT_PER_MINUTE:-300}
+    volumes:
+      - server_uploads:/app/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  postgres:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?set in .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set in .env}
+      POSTGRES_DB: ${POSTGRES_DB:?set in .env}
+    volumes:
+      - pgdata_prod:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ['redis-server', '--appendonly', 'yes']
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # Phase 6: automatic daily pg_dump with a 14-backup retention window.
+  db-backup:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      PGUSER: ${POSTGRES_USER:?set in .env}
+      PGPASSWORD: ${POSTGRES_PASSWORD:?set in .env}
+      POSTGRES_DB: ${POSTGRES_DB:?set in .env}
+      BACKUP_INTERVAL_SECONDS: ${BACKUP_INTERVAL_SECONDS:-86400}
+    volumes:
+      - ./backups:/backups
+    entrypoint: >-
+      sh -c 'while true; do
+      ts=$$(date +%Y%m%d-%H%M%S);
+      pg_dump -h postgres -d $${POSTGRES_DB} -Fc -f /backups/pm-$${ts}.dump &&
+      echo "backup pm-$${ts}.dump done";
+      ls -1t /backups/pm-*.dump 2>/dev/null | tail -n +15 | xargs -r rm -f;
+      sleep $${BACKUP_INTERVAL_SECONDS};
+      done'
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  pgdata_prod:
+  redisdata:
+  caddy_data:
+  caddy_config:
+  server_uploads:

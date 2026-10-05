@@ -29,8 +29,11 @@ export class ActivityService {
     private readonly tasks: TaskAccess,
   ) {}
 
-  /** Fire-and-forget: never blocks or fails the mutation that produced it. */
-  record(event: TaskActivityEvent): void {
+  /**
+   * Records activity rows. Awaited by the composition root so entries exist
+   * before the HTTP response — rejections are caught there, not by callers.
+   */
+  async record(event: TaskActivityEvent): Promise<void> {
     const rows =
       event.changes && event.changes.length > 0
         ? event.changes.map((c) => ({
@@ -52,9 +55,11 @@ export class ActivityService {
             },
           ];
 
-    this.db.activityLog
-      .createMany({ data: rows })
-      .catch((err: unknown) => logger.warn({ err }, 'Failed to record task activity'));
+    try {
+      await this.db.activityLog.createMany({ data: rows });
+    } catch (err: unknown) {
+      logger.warn({ err }, 'Failed to record task activity');
+    }
   }
 
   async list(userId: number, taskId: number, limit = 50) {
