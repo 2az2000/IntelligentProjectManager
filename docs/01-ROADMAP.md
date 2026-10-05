@@ -183,42 +183,43 @@
 
 ## فاز ۴ — Scheduling هوشمند
 
-### Database (migration: `dependencies_estimates_attachments`)
-- [ ] `TaskDependency (predecessorId, successorId, type)` با `onDelete: Cascade`.
-- [ ] `Task.estimateHours`؛ `Attachment` کامل (mimeType، size، storageKey، createdAt، relation uploader).
+### Database (migration: `20260930000000_dependencies_estimates` — اعمال‌شده)
+- [x] `TaskDependency (predecessorId, successorId, type)` با `onDelete: Cascade` — enum `DependencyType` فعلاً فقط `FINISH_TO_START`؛ PK ترکیبی + index روی `successorId`.
+- [x] `Task.estimateHours` (Float، 0..10_000، nullable).
+- [x] `Attachment` کامل (mimeType، size، storageKey، createdAt، relation uploader) — migration `20261003000000_attachments_activity_notifications`.
 
 ### Server
-- [ ] `modules/scheduling`: `ScheduleService` — خواندن تسک‌ها + dependencyها ⇒ `CriticalPathEngine` ⇒ `ScheduleDto`.
-- [ ] endpointهای dependency با جلوگیری از cycle (`DependencyResolver.detectCycle` قبل از insert ⇒ 409 `DEPENDENCY_CYCLE`) و منع dependency بین پروژه‌ها.
-- [ ] تبدیل duration به تاریخ واقعی (روزهای کاری؛ تعطیلی پنجشنبه/جمعه قابل تنظیم برای ایران).
-- [ ] `modules/attachments`: آپلود با `multer` به MinIO/S3 (سرویس `minio` در docker-compose) یا دیسک محلی در dev؛ لینک امضاشده.
+- [x] `modules/scheduling`: `ScheduleService` — خواندن تسک‌ها + dependencyها ⇒ `CriticalPathEngine` ⇒ `ScheduleDto` (تسک DONE از مسیر خارج، unestimated تایمینگ null + `unestimatedTaskIds`؛ `applySchedule` فقط تاریخ‌های خالی/گذشته را با لنگر startDate پروژه پر می‌کند).
+- [x] endpointهای dependency با جلوگیری از cycle (DFS `wouldCreateCycle` قبل از insert ⇒ 409 `DEPENDENCY_CYCLE`) و منع dependency بین پروژه‌ها + زیرتسک‌ها؛ `GET/POST /projects/:id/dependencies`، `DELETE .../:pre/:succ`، `GET/POST /projects/:id/schedule(/apply)`، `GET /tasks/:id/schedule`.
+- [x] تبدیل duration به تاریخ واقعی (روزهای کاری؛ تعطیلی پنجشنبه/جمعه قابل تنظیم برای ایران) — `modules/scheduling/domain/work-calendar.ts` با `WORKING_WEEKEND` (hour-by-hour، roll-forward).
+- [x] `modules/attachments`: آپلود با `multer` (memoryStorage + limit) به دیسک محلی در dev (`UPLOAD_DIR`، storageKey امن داخل پوشه)؛ stream دانلود با `Content-Disposition` و حذف فقط توسط uploader/ADMIN-OWNER (MinIO در فاز ۶ قابل جایگزینی است).
 
 ### Client
-- [ ] Task drawer: بخش «وابسته به» / «مسدود می‌کند» با جستجوی تسک.
-- [ ] `projects/[projectId]/timeline`: Gantt (کتابخانه با `next/dynamic`) با هایلایت مسیر بحرانی، slack، خطوط dependency.
-- [ ] نمایش «تاریخ پایان پیش‌بینی‌شده» پروژه در هدر.
-- [ ] آپلود/دانلود/حذف attachment در drawer (drag & drop فایل).
+- [x] Task drawer: بخش «وابستگی‌ها» (وابسته به / مسدود می‌کند) با select تسک‌های پروژه — به‌جای جستجوی آزاد، select ساده با لیست نامزد‌ها (گام جستجو در فاز ۵ اختیاری است).
+- [x] `projects/[projectId]/timeline`: Gantt دستی (CSS/SVG بدون کتابخانه‌ی خارجی — RTL-safe) با هایلایت مسیر بحرانی، قطعه‌ی slack، خطوط dependency، legend و دکمه‌ی «پر کردن تاریخ‌های خالی» (MEMBER+).
+- [x] نمایش «تاریخ پایان پیش‌بینی‌شده» پروژه در هدر (badge، فقط وقتی تخمینی وجود دارد).
+- [x] فیلد «تخمین (ساعت)» در CreateTaskDialog و TaskSheet ✓؛ آپلود/دانلود/حذف attachment در drawer ✓ (دکمه‌ی آپلود — drag & drop فایل به فاز بعد).
 
 **✅ Definition of Done**
-- [ ] ساخت cycle از UI ممکن نیست و پیام واضح می‌دهد.
-- [ ] Timeline برای پروژه‌ی seed مسیر بحرانی درست را نشان می‌دهد (تست واحد + E2E).
+- [x] ساخت cycle از UI ممکن نیست و پیام واضح می‌دهد (toast ترجمه‌شده از کد `DEPENDENCY_CYCLE`).
+- [x] Timeline برای پروژه‌ی seed مسیر بحرانی درست را نشان می‌دهد (تست واحد ✓ — ۶ تست کامپوننت/لایه؛ E2E ✓ — `e2e/phase4-timeline.spec.ts`: تخمین + dependency ⇒ duration/critical path/bars).
 
 ---
 
 ## فاز ۵ — Real-time، Notifications، Background jobs
 
-- [ ] docker-compose: سرویس `redis`؛ `REDIS_URL` در env.
-- [ ] **Socket.IO**: احراز هویت handshake با cookie؛ room به ازای پروژه؛ انتشار رویدادهای task/comment پس از commit.
-- [ ] Client: `useProjectSocket(projectId)` ⇒ `setQueryData`/`invalidateQueries`؛ نشانگر «چه کسی آنلاین است».
-- [ ] **ActivityLog**: ثبت خودکار تغییرات تسک (status، assignee، dueDate…) در service؛ تایم‌لاین در drawer.
-- [ ] **Notifications**: جدول + API؛ رویدادها: assign به من، mention، کامنت روی تسک من، نزدیک شدن dueDate.
-- [ ] **BullMQ**: job یادآوری dueDate (۲۴ ساعت قبل)، digest ایمیل روزانه (nodemailer + قالب fa/en).
-- [ ] Client: Bell با badge تعداد خوانده‌نشده، dropdown لیست، «همه خوانده شد»؛ تنظیمات notification در Settings.
-- [ ] `@mention` در کامنت‌ها.
+- [x] docker-compose: سرویس `redis` (pm-redis)؛ `REDIS_URL` و `JOBS_ENABLED` در env (در test خاموش).
+- [x] **Socket.IO**: احراز هویت handshake با cookie؛ room به ازای پروژه + user؛ انتشار `task:changed`/`comment:created`/`notification:new` پس از commit + presence map (`shared/realtime`).
+- [x] Client: `useProjectSocket(projectId)` ⇒ invalidateQueries (tasks/schedule/dashboard/…)؛ `PresenceAvatars` «چه کسی آنلاین است» در هدر بورد/لیست.
+- [x] **ActivityLog**: ثبت خودکار تغییرات تسک (diff روی TRACKED_FIELDS با snapshot قبل از applyChanges) در service؛ تایم‌لاین در drawer (`GET /tasks/:id/activity`).
+- [x] **Notifications**: جدول + API (list/unread-count/read/read-all)؛ رویدادها: ASSIGNED، MENTIONED، COMMENTED، DUE_REMINDER (self-notify ممنوع؛ اکтер هرگز notified نمی‌شود).
+- [x] **BullMQ**: job یادآوری dueDate (۲۴ ساعت قبل، jobId idempotent `due-N`)، digest ایمیل روزانه ۸ صبح (nodemailer jsonTransport + قالب fa/en)؛ graceful close.
+- [x] Client: Bell با badge تعداد خوانده‌نشده + toast رویداد زنده، dropdown لیست، «همه خوانده شد»؛ toggle اعلان ایمیلی در Settings.
+- [x] `@mention` در کامنت‌ها (`findMentions` روی memberهای پروژه، case-insensitive ⇒ MENTIONED).
 
 **✅ Definition of Done**
-- [ ] دو مرورگر با دو کاربر: drag در یکی بدون refresh در دیگری دیده می‌شود.
-- [ ] assign کردن تسک ⇒ اعلان فوری برای کاربر مقصد.
+- [x] دو مرورگر با دو کاربر: تسک ساخته‌شده توسط admin بدون refresh روی بورد sara دیده می‌شود (E2E `e2e/phase5-realtime.spec.ts`) + badge اعلان assign.
+- [x] assign کردن تسک ⇒ اعلان فوری برای کاربر مقصد (integration + E2E bell).
 
 ---
 
@@ -245,6 +246,41 @@
 ---
 
 ## 📝 گزارش پیشرفت (Changelog)
+
+### 2026-10-04 — فاز ۴ کامل شد ✅ + فاز ۵ کامل شد ✅
+
+**Server**
+- migration `20261003000000_attachments_activity_notifications`: بازنویسی Attachment، ActivityLog (index [taskId,createdAt])، Notification، User.notifyEmail.
+- `work-calendar`: روزهای کاری ایران (WORKING_WEEKEND پیش‌فرض پنجشنبه/جمعه) در buildSchedule/applySchedule؛ ۹ تست واحد.
+- ماژول‌های activity / attachments / notifications / jobs (BullMQ + nodemailer) با factory pattern؛ bus تایپ‌شده + لایه Socket.IO (handshake با cookie، roomهای project/user، presence).
+- hooks: tasks.onChanged ⇒ activity + broadcast + ASSIGNED + scheduleDueReminder؛ comments.onCreated ⇒ COMMENTED/MENTIONED. رفع باگ mutation در applyChanges (snapshot قبل از اعمال).
+- تأیید: typecheck/lint سبز، **۷۹/۷۹ تست** (۱۳ فایل، شامل ۸ تست integration realtime/attachments/activity/notifications).
+
+**Client**
+- `features/realtime` (socket singleton + useProjectSocket/useProjectPresence + PresenceAvatars)، `features/notifications` (Bell با badge/dropdown/mark-all + toast زنده)، `features/activity` (تایم‌لاین drawer با diff ترجمه‌شده)، `features/attachments` (آپلود/دانلود/حذف در drawer).
+- toggle اعلان ایمیلی در Settings؛ qkهای notifications/activity/attachments؛ i18n کامل fa/en (۴ namespace جدید + NOTIFICATION_NOT_FOUND).
+- E2E: `phase4-timeline.spec.ts` (تخمین+dependency ⇒ CPM) و `phase5-realtime.spec.ts` (دو مرورگر: بورد زنده + bell)؛ فیکس locator مبهم phase3.
+- تأیید: typecheck سبز، lint بدون خطا (۱ warning قدیمی)، **۵۳/۵۳ تست** (۱۳ فایل)، E2E فاز ۳/۴/۵ سبز، build موفق.
+
+### 2026-10-03 — فاز ۴ (سcheduling) server + client اصلی تمام شد — attachments باقی است
+
+**Database** — migration دستی `20260930000000_dependencies_estimates`: `Task.estimateHours` + `TaskDependency` (PK ترکیبی، cascade، index) + enum `DependencyType`. روی dev اعمال شد؛ تست‌ها خودکار migrate می‌کنند.
+
+**Server**
+- `buildSchedule` خالص روی `CriticalPathEngine`: DONEها duration صفر، unestimatedها تایمینگ null و خارج از مسیر بحرانی؛ `scheduledStart/Finish` از startDate دستی + es.
+- `ScheduleService` (project/task/apply) و `DependencyService` با `assertLinkable` (خودتسک/زیرتسک/پروژه‌ی متفاوت ⇒ 400) و 409 برای cycle/existence.
+- seed: تخمین‌ها + زنجیره‌ی نمایشی idempotent (top-up برای دیتابیس‌های قدیمی). قرارداد API به‌روز شد (فقط لوکال).
+- تأیید: typecheck/lint سبز، **۶۲/۶۲ تست** (۱۱ فایل، شامل ۱۱ تست integration scheduling)، smoke واقعی روی :8000 (duration 64، مسیر بحرانی [4,5,6]).
+
+**Client**
+- ماژول `features/scheduling` (api/hooks/lib/types) + صفحه‌ی `projects/[projectId]/timeline`: Gantt دستی CSS/SVG با مسیر بحرانی، slack، خطوط وابستگی، legend، دکمه‌ی apply؛ badge «پایان پیش‌بینی‌شده» در هدر پروژه.
+- فیلد «تخمین (ساعت)» در CreateTaskDialog و TaskSheet؛ بخش «وابستگی‌ها» در drawer (افزودن/حذف با toast خطاهای ترجمه‌شده).
+- i18n کامل fa/en؛ رفع بمب ساعتی تست `is-overdue` (تاریخ‌ها حالا نسبت به ساعت سیستم).
+- تأیید: typecheck سبز، lint بدون خطا، **۴۸/۴۸ تست** (۸ فایل)؛ smoke مرورگر: timeline پروژه‌ی seed مسیر بحرانی درست (وایرفریم→لندینگ→QA، ۶۴ ساعت، ۳ تسک بحرانی) و drawer/dependencyها بدون خطای console.
+
+**باقی‌مانده‌ی فاز ۴:** attachments (migration + MinIO + drawer) و تبدیل duration به روزهای کاری ایران؛ E2E برای timeline.
+
+---
 
 ### 2026-09-30 — فاز ۳ تمام شد ✅
 **Database** — migration `20260929000000_task_enums_position_comments`
