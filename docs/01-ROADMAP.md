@@ -249,6 +249,25 @@
 
 ## 📝 گزارش پیشرفت (Changelog)
 
+### 2026-10-06 — فاز ۷ (گام دوم): §۱۱ کامل + heatmap + a11y + سوییچ AI به OpenRouter
+
+**§۱۱ حساب کاربری و چرخه‌ی داده**
+- فراموشی رمز: مدل `PasswordResetToken` (HMAC، ۱ ساعت، یک‌بارمصرف، reuse ⇒ ابطال بقیه)؛ `POST /auth/forgot-password` (همیشه 204) و `POST /auth/reset-password` (revoke همه‌ی نشست‌ها)؛ ایمیل jsonTransport در dev؛ صفحات `/forgot-password` و `/reset-password` با i18n + لینک در فرم لاگین؛ ۸ تست integration جدید.
+- سطل زباله: `GET /projects/:id/tasks/trash` + `POST .../trash/:taskId/restore` (نویسنده/ADMIN؛ زیرتسک‌های هم‌حذف برمی‌گردند)؛ کارت سطل زباله در Project Settings.
+- قالب پروژه: سه قالب آماده؛ `GET /projects/templates` + `POST /projects/from-template` (پورت `templateApply` ⇒ ساخت از مسیر tasks/scheduling با همان دسترسی/رویدادها)؛ select قالب در دیالوگ پروژه‌ی جدید.
+
+**§۶ مدیریت منابع** — صفحه‌ی تیم ⇒ workload heatmap (نسبت به پرکارترین عضو: ≤۵۰٪ سبز، ≤۸۵٪ کهربایی، بالاتر قرمز + legend).
+
+**§۱۰ طراحی و برند** — گام اول a11y: skip-link سراسری + `id="main-content"`.
+
+**AI** — ارائه‌دهنده‌ی پیش‌فرض از Groq (تحریم IP ایران) به **OpenRouter رایگان** (`deepseek/deepseek-v3.2-exp:free`) تغییر کرد؛ فیکس retry بدون response_format. `.env.example` آپدیت شد (یک کلید اشتباهی‌واردشده حذف گردید).
+
+**تأیید:** server 102/102 + lint + typecheck؛ client 67/67 + lint + build. داکیومنت‌های `LEARNING.md` طبق تصمیم، لوکال (git-ignored) ماندند و از ریپو حذف شدند.
+
+**باقی‌مانده‌ی §۶/§۱۰/§۱۱:** time tracking، export شمسی، burndown، بقیه‌ی a11y (axe audit)، تأیید ایمیل، GDPR، recurrence، هشدار تضاد تاریخ.
+
+---
+
 ### 2026-10-06 — فاز ۷ (گام اول): AI با مدل رایگان + داکیومنت‌های یادگیری
 
 **Database**
