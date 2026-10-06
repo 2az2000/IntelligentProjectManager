@@ -27,6 +27,8 @@ export interface MemberView {
   joinedAt: Date;
   openTasks: number;
   openPoints: number;
+  /** Specialties used by AI assignee suggestions. */
+  skills: string[];
 }
 
 export interface TeammateView {
@@ -48,8 +50,12 @@ export interface ProjectRepository {
   findRole(projectId: number, userId: number): Promise<ProjectRole | null>;
   projectIdsForUser(userId: number): Promise<number[]>;
   listMembers(projectId: number): Promise<MemberView[]>;
-  addMember(projectId: number, userId: number, role: ProjectRole): Promise<void>;
-  updateMemberRole(projectId: number, userId: number, role: ProjectRole): Promise<void>;
+  addMember(projectId: number, userId: number, role: ProjectRole, skills: string[]): Promise<void>;
+  updateMember(
+    projectId: number,
+    userId: number,
+    patch: { role?: ProjectRole; skills?: string[] },
+  ): Promise<void>;
   removeMember(projectId: number, userId: number): Promise<void>;
   /** Everyone who shares at least one project with the user, with workload across those projects. */
   teamForUser(userId: number, now: Date): Promise<TeammateView[]>;

@@ -72,12 +72,7 @@ export function createProjectRouter(projects: ProjectService): Router {
   router.patch(
     '/:projectId/members/:userId',
     handle({ params: memberParams, body: updateMemberBody }, async ({ params, body }, req, res) => {
-      const member = await projects.updateMemberRole(
-        currentUserId(req),
-        params.projectId,
-        params.userId,
-        body.role,
-      );
+      const member = await projects.updateMember(currentUserId(req), params.projectId, params.userId, body);
       res.json(toMemberDto(member));
     }),
   );

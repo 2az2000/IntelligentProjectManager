@@ -18,6 +18,7 @@ import {
   moveTaskBody,
   updateTaskBody,
 } from '../modules/tasks';
+import { enrichTaskBody } from '../modules/ai';
 
 /**
  * Phase 6: machine-readable API contract served at /docs (Swagger UI) and
@@ -73,6 +74,7 @@ const MemberSchema = z
     name: z.string(),
     email: z.string(),
     avatarUrl: z.string().nullable().optional(),
+    skills: z.array(z.string()).optional(),
   })
   .openapi('Member');
 
@@ -160,6 +162,23 @@ const DependencySchema = z
     type: z.enum(['FINISH_TO_START']),
   })
   .openapi('Dependency');
+
+const AiAssigneeSchema = z
+  .object({ userId: Id, name: z.string(), reason: z.string() })
+  .openapi('AiAssignee');
+
+const AiEnrichmentSchema = z
+  .object({
+    description: z.string(),
+    subtasks: z.array(z.string()),
+    suggestedAssignees: z.array(AiAssigneeSchema),
+    estimateHours: z.number().nullable(),
+  })
+  .openapi('AiEnrichment');
+
+const AiProjectDocSchema = z
+  .object({ markdown: z.string(), model: z.string() })
+  .openapi('AiProjectDoc');
 
 // ---- path helpers ---------------------------------------------------------
 
@@ -673,6 +692,49 @@ register({
   responses: { 200: ok(z.record(z.string(), z.unknown())), 401: error },
 });
 
+// ---- AI (phase 7) ---------------------------------------------------------
+
+register({
+  method: 'post',
+  path: '/projects/{projectId}/ai/enrich-task',
+  summary: 'AI preview: complete a rough task (description, subtasks, assignees) — writes nothing',
+  tags: ['AI'],
+  security: auth,
+  request: {
+    params: z.object({ projectId: pathId('projectId') }),
+    body: { content: json(enrichTaskBody), required: true },
+  },
+  responses: {
+    200: ok(AiEnrichmentSchema),
+    400: error,
+    403: error,
+    404: error,
+    429: error,
+    502: error,
+    503: error,
+    504: error,
+  },
+});
+
+register({
+  method: 'post',
+  path: '/projects/{projectId}/ai/project-doc',
+  summary: 'AI preview: generate full project documentation as Markdown — writes nothing',
+  tags: ['AI'],
+  security: auth,
+  request: { params: z.object({ projectId: pathId('projectId') }) },
+  responses: {
+    200: ok(AiProjectDocSchema),
+    400: error,
+    403: error,
+    404: error,
+    429: error,
+    502: error,
+    503: error,
+    504: error,
+  },
+});
+
 // ---- document --------------------------------------------------------------
 
 const generator = new OpenApiGeneratorV3(registry.definitions);
@@ -686,7 +748,18 @@ export const openapiDocument = generator.generateDocument({
       'Project management API (monorepo server). Auth is cookie-based: log in via /auth/login, then every request carries the httpOnly access_token cookie. Errors use { error: { code, message } }.',
   },
   servers: [{ url: '/' }],
-  tags: ['Health', 'Auth', 'Users', 'Projects', 'Tasks', 'Comments', 'Scheduling', 'Attachments', 'Activity', 'Notifications', 'Dashboard'].map(
-    (name) => ({ name }),
-  ),
+  tags: [
+    'Health',
+    'Auth',
+    'Users',
+    'Projects',
+    'Tasks',
+    'Comments',
+    'Scheduling',
+    'Attachments',
+    'Activity',
+    'Notifications',
+    'Dashboard',
+    'AI',
+  ].map((name) => ({ name })),
 });

@@ -1,8 +1,9 @@
 'use client';
 
+import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Sparkles } from 'lucide-react';
 import { useLocale, useTranslations } from 'next-intl';
 import { useTheme } from 'next-themes';
 import { toast } from 'sonner';
@@ -21,7 +22,9 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { UserAvatar } from '@/components/shared/user-avatar';
+import { useProjectDoc } from '@/features/ai';
 import { useCurrentUser, type User } from '@/features/auth';
+import { useProjects } from '@/features/projects';
 import { useChangePassword, useUpdateProfile } from '@/features/users';
 import { useErrorMessage } from '@/hooks/use-error-message';
 import { usePathname, useRouter } from '@/i18n/navigation';
@@ -40,6 +43,7 @@ export function SettingsPanel() {
       <PreferencesCard />
       <NotificationsCard notifyEmail={user.notifyEmail ?? true} />
       <PasswordCard />
+      <AiProjectDocCard />
     </div>
   );
 }
@@ -297,6 +301,93 @@ function PasswordCard() {
             </Button>
           </form>
         </Form>
+      </CardContent>
+    </Card>
+  );
+}
+
+/**
+ * Phase 7: AI-generated full project documentation. Like enrich-task this is a preview:
+ * the Markdown is returned and shown here — nothing is stored on the server.
+ */
+function AiProjectDocCard() {
+  const t = useTranslations('Settings');
+  const toMessage = useErrorMessage();
+  const { data: projects } = useProjects();
+  const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [doc, setDoc] = useState<string | null>(null);
+  const generate = useProjectDoc();
+
+  const options = projects ?? [];
+  const projectId = selectedId ?? options[0]?.id ?? null;
+
+  const handleGenerate = () => {
+    if (projectId == null) return;
+    generate.mutate(projectId, {
+      onSuccess: (result) => setDoc(result.markdown),
+      onError: (error) => toast.error(toMessage(error)),
+    });
+  };
+
+  const handleCopy = async () => {
+    if (!doc) return;
+    await navigator.clipboard.writeText(doc);
+    toast.success(t('aiDocCopied'));
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>{t('aiDocTitle')}</CardTitle>
+        <CardDescription>{t('aiDocDescription')}</CardDescription>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-4">
+        <div className="flex flex-wrap items-center gap-2">
+          <Select
+            value={projectId != null ? String(projectId) : ''}
+            onValueChange={(next) => {
+              setSelectedId(Number(next));
+              setDoc(null);
+            }}
+          >
+            <SelectTrigger className="w-56" aria-label={t('aiDocSelectProject')}>
+              <SelectValue placeholder={t('aiDocSelectProject')} />
+            </SelectTrigger>
+            <SelectContent>
+              {options.map((project) => (
+                <SelectItem key={project.id} value={String(project.id)}>
+                  {project.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Button
+            type="button"
+            className="gap-2"
+            disabled={projectId == null || generate.isPending}
+            onClick={handleGenerate}
+          >
+            {generate.isPending ? (
+              <Loader2 className="size-4 animate-spin" />
+            ) : (
+              <Sparkles className="size-4" aria-hidden />
+            )}
+            {t('aiDocGenerate')}
+          </Button>
+        </div>
+        {generate.isPending && <p className="text-sm text-muted-foreground">{t('aiDocGenerating')}</p>}
+        {doc && (
+          <div className="flex flex-col gap-2">
+            <div className="max-h-96 overflow-auto rounded-md border bg-muted/40 p-3">
+              <pre className="whitespace-pre-wrap font-sans text-sm leading-6" dir="auto">
+                {doc}
+              </pre>
+            </div>
+            <Button type="button" variant="outline" size="sm" className="self-end" onClick={handleCopy}>
+              {t('aiDocCopy')}
+            </Button>
+          </div>
+        )}
       </CardContent>
     </Card>
   );

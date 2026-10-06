@@ -8,6 +8,9 @@ export const memberParams = z.object({ projectId: id, userId: id });
 
 const assignableRole = z.enum(PROJECT_ROLES).exclude(['OWNER']);
 
+/** Free-text specialties shown to the AI when it suggests assignees. */
+const skills = z.array(z.string().trim().min(1).max(40)).max(10);
+
 export const createProjectBody = z
   .object({
     name: z.string().trim().min(1).max(120),
@@ -29,7 +32,14 @@ export const updateProjectBody = z
   .refine((body) => Object.keys(body).length > 0, 'At least one field is required');
 
 export const addMemberBody = z
-  .object({ userId: z.number().int().positive(), role: assignableRole.default('MEMBER') })
+  .object({
+    userId: z.number().int().positive(),
+    role: assignableRole.default('MEMBER'),
+    skills: skills.optional(),
+  })
   .strict();
 
-export const updateMemberBody = z.object({ role: assignableRole }).strict();
+export const updateMemberBody = z
+  .object({ role: assignableRole.optional(), skills: skills.optional() })
+  .strict()
+  .refine((body) => body.role !== undefined || body.skills !== undefined, 'At least one field is required');

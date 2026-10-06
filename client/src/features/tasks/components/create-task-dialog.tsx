@@ -3,10 +3,11 @@
 import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { Loader2, Plus } from 'lucide-react';
+import { Loader2, Plus, Sparkles, X } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
   Dialog,
   DialogContent,
@@ -18,8 +19,10 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { DatePicker } from '@/components/shared/date-picker';
+import { useEnrichTask } from '@/features/ai';
 import { useErrorMessage } from '@/hooks/use-error-message';
 import { toDayIso } from '@/lib/calendar';
+import { taskApi } from '../api/task.api';
 import { useCreateTask } from '../hooks/use-tasks';
 import { taskFormSchema, type TaskFormValues } from '../schemas/task.schema';
 import type { UserSummary } from '../types';
@@ -41,12 +44,41 @@ export function CreateTaskDialog({ projectId, members }: { projectId: number; me
   const [open, setOpen] = useState(false);
   const toMessage = useErrorMessage();
   const createTask = useCreateTask(projectId);
+  const enrich = useEnrichTask(projectId);
+  /** AI-suggested subtasks (checkbox list) — applied after the parent task is created. */
+  const [aiSubtasks, setAiSubtasks] = useState<{ title: string; selected: boolean }[]>([]);
 
   const form = useForm<TaskFormValues>({ resolver: zodResolver(taskFormSchema), defaultValues: EMPTY });
+  const title = form.watch('title');
+  const assigneeId = form.watch('assigneeId');
+  const assigneeHint = enrich.data?.suggestedAssignees.find((a) => a.userId === assigneeId)?.reason;
 
-  const onSubmit = form.handleSubmit((values) =>
-    createTask.mutate(
+  /** AI completes the rough task: fills untouched fields and lists suggested subtasks. */
+  const handleEnrich = () => {
+    enrich.mutate(
+      { title: title.trim(), description: form.getValues('description') || undefined },
       {
+        onSuccess: (preview) => {
+          // The AI assists, it never overrides: only empty fields are prefilled.
+          if (!form.getValues('description') && preview.description) {
+            form.setValue('description', preview.description);
+          }
+          if (form.getValues('estimateHours') == null && preview.estimateHours != null) {
+            form.setValue('estimateHours', preview.estimateHours);
+          }
+          if (assigneeId == null && preview.suggestedAssignees[0]) {
+            form.setValue('assigneeId', preview.suggestedAssignees[0].userId);
+          }
+          setAiSubtasks(preview.subtasks.map((subtask) => ({ title: subtask, selected: true })));
+        },
+        onError: (error) => toast.error(toMessage(error)),
+      },
+    );
+  };
+
+  const onSubmit = form.handleSubmit(async (values) => {
+    try {
+      const task = await createTask.mutateAsync({
         title: values.title,
         description: values.description || undefined,
         status: values.status,
@@ -55,20 +87,28 @@ export function CreateTaskDialog({ projectId, members }: { projectId: number; me
         dueDate: values.dueDate ? toDayIso(values.dueDate) : undefined,
         points: values.points ?? undefined,
         estimateHours: values.estimateHours ?? undefined,
-      },
-      {
-        onSuccess: () => {
-          toast.success(t('created'));
-          form.reset(EMPTY);
-          setOpen(false);
-        },
-        onError: (error) => toast.error(toMessage(error)),
-      },
-    ),
-  );
+      });
+      // Selected AI subtasks become real subtasks of the freshly created task.
+      for (const subtask of aiSubtasks.filter((s) => s.selected && s.title.trim())) {
+        await taskApi.create(projectId, { parentId: task.id, title: subtask.title.trim() });
+      }
+      toast.success(t('created'));
+      form.reset(EMPTY);
+      setAiSubtasks([]);
+      setOpen(false);
+    } catch (error) {
+      toast.error(toMessage(error));
+    }
+  });
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        setOpen(next);
+        if (!next) setAiSubtasks([]);
+      }}
+    >
       <DialogTrigger asChild>
         <Button className="gap-2">
           <Plus className="size-4" aria-hidden /> {t('newTask')}
@@ -93,6 +133,23 @@ export function CreateTaskDialog({ projectId, members }: { projectId: number; me
                 </FormItem>
               )}
             />
+            <div className="flex justify-end">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="gap-2"
+                disabled={title.trim().length < 3 || enrich.isPending}
+                onClick={handleEnrich}
+              >
+                {enrich.isPending ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : (
+                  <Sparkles className="size-4" aria-hidden />
+                )}
+                {t('aiComplete')}
+              </Button>
+            </div>
             <FormField
               control={form.control}
               name="description"
@@ -106,6 +163,34 @@ export function CreateTaskDialog({ projectId, members }: { projectId: number; me
                 </FormItem>
               )}
             />
+            {aiSubtasks.length > 0 && (
+              <div className="flex flex-col gap-2 rounded-lg border p-3">
+                <p className="text-sm font-medium">{t('aiSubtasks')}</p>
+                {aiSubtasks.map((subtask, index) => (
+                  <label key={`${subtask.title}-${index}`} className="flex items-center gap-2 text-sm">
+                    <Checkbox
+                      checked={subtask.selected}
+                      onCheckedChange={(checked) =>
+                        setAiSubtasks((prev) =>
+                          prev.map((s, i) => (i === index ? { ...s, selected: checked === true } : s)),
+                        )
+                      }
+                    />
+                    <span className="flex-1">{subtask.title}</span>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="size-6"
+                      aria-label={t('removeSuggestion')}
+                      onClick={() => setAiSubtasks((prev) => prev.filter((_, i) => i !== index))}
+                    >
+                      <X className="size-3.5" />
+                    </Button>
+                  </label>
+                ))}
+              </div>
+            )}
             <div className="grid grid-cols-2 gap-4">
               <FormField
                 control={form.control}
@@ -134,6 +219,9 @@ export function CreateTaskDialog({ projectId, members }: { projectId: number; me
                   <FormItem>
                     <FormLabel>{t('assigneeLabel')}</FormLabel>
                     <AssigneeSelect value={field.value} onChange={field.onChange} members={members} />
+                    {assigneeHint && (
+                      <p className="text-xs text-muted-foreground">✨ {assigneeHint}</p>
+                    )}
                   </FormItem>
                 )}
               />

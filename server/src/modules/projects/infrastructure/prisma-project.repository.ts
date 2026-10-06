@@ -109,20 +109,25 @@ export class PrismaProjectRepository implements ProjectRepository {
     return members.map((m) => ({
       user: m.user,
       role: m.role,
+      skills: m.skills,
       joinedAt: m.joinedAt,
       openTasks: byUser.get(m.userId)?._count._all ?? 0,
       openPoints: byUser.get(m.userId)?._sum.points ?? 0,
     }));
   }
 
-  async addMember(projectId: number, userId: number, role: ProjectRole): Promise<void> {
-    await this.db.projectMember.create({ data: { projectId, userId, role } });
+  async addMember(projectId: number, userId: number, role: ProjectRole, skills: string[]): Promise<void> {
+    await this.db.projectMember.create({ data: { projectId, userId, role, skills } });
   }
 
-  async updateMemberRole(projectId: number, userId: number, role: ProjectRole): Promise<void> {
+  async updateMember(
+    projectId: number,
+    userId: number,
+    patch: { role?: ProjectRole; skills?: string[] },
+  ): Promise<void> {
     await this.db.projectMember.update({
       where: { projectId_userId: { projectId, userId } },
-      data: { role },
+      data: patch,
     });
   }
 
