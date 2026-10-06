@@ -19,7 +19,7 @@
 | ۴ | Smart scheduling | Dependencyها، CPM، Timeline/Gantt، فایل پیوست | ۷–۱۰ روز | ✅ تمام |
 | ۵ | Real-time & Notifications | board زنده، اعلان، activity log، jobهای پس‌زمینه | ۶–۸ روز | ✅ تمام |
 | ۶ | Production-ready | تست، CI/CD، Docker، امنیت، مستندات API | ۵–۷ روز | ✅ تمام (Sentry به بهبودها منتقل شد) |
-| ۷ | Advanced features | تقویم شمسی، Command Palette، Workload heatmap، پیش‌بینی Monte Carlo، دستیار AI | ۱۰–۱۵ روز | ⏳ |
+| ۷ | Advanced features | تقویم شمسی، Command Palette، Workload heatmap، پیش‌بینی Monte Carlo، دستیار AI | ۱۰–۱۵ روز | 🟡 (AI پایه: انجام شد) |
 
 راهنمای وضعیت: ✅ تمام · 🟡 در حال انجام · ⏳ شروع نشده · ⚠️ ناقص (توضیح در changelog)
 
@@ -243,9 +243,36 @@
 ## بعد از فاز ۶
 پیشنهادهای توسعه‌ی بعدی در [03-IMPROVEMENTS.md](03-IMPROVEMENTS.md).
 
+**داکیومنت‌های یادگیری (فاز ۷):** مسیر آموزشی پروژه — [`server/LEARNING.md`](../server/LEARNING.md) و [`client/LEARNING.md`](../client/LEARNING.md)؛ هر ماژول/فیچر `LEARNING.md` خودش را دارد (الگوها، سینتکس، تمرین).
+
 ---
 
 ## 📝 گزارش پیشرفت (Changelog)
+
+### 2026-10-06 — فاز ۷ (گام اول): AI با مدل رایگان + داکیومنت‌های یادگیری
+
+**Database**
+- migration `20261006085423_add_member_skills`: `ProjectMember.skills String[] @default([])` (تخصص‌ها؛ ورودی AI برای پیشنهاد assignee).
+
+**Server**
+- ماژول `modules/ai` (همان factory pattern): `POST /projects/:id/ai/enrich-task` (پیش‌نمایش: توضیح، زیرتسک، پیشنهاد assignee با دلیل، تخمین) و `POST /projects/:id/ai/project-doc` (داکیومنت کامل Markdown)؛ هر دو **فقط پیش‌نمایش** (هیچ writeی) و preview-then-apply.
+- LLM با `fetch` روی **هر endpoint سازگار OpenAI** — بدون SDK؛ پیش‌فرض Groq رایگان (`llama-3.3-70b-versatile`)؛ Google AI Studio / OpenRouter فقط با تغییر env (`AI_API_KEY/AI_BASE_URL/AI_MODEL/AI_TIMEOUT_MS`). بدون کلید ⇒ 503 `AI_NOT_CONFIGURED` و بقیه‌ی اپ سالم.
+- امنیت/کیفیت: خروجی مدل با Zod validate؛ assignee غیرعضو حذف؛ rate limiter اختصاصی (10/min)؛ timeout با AbortController؛ کدهای `AI_PROVIDER_ERROR/AI_BAD_RESPONSE/AI_TIMEOUT`؛ ثبت در OpenAPI (tag: AI).
+- `updateMember` (role و/یا skills؛ self یا ADMIN) جایگزین updateMemberRole؛ skills در addMember؛ `MemberDto.skills`.
+- **تست: ۹۴/۹۴ سبز** (۷ تست جدید integration AI با fetch stub) + typecheck + lint.
+
+**Client**
+- `features/ai` (api/hooks/types)؛ دکمه‌ی «تکمیل با هوش مصنوعی» در CreateTaskDialog — فقط فیلدهای خالی پر می‌شوند، زیرتسک‌های پیشنهادی چک‌باکس‌دار و در submit واقعاً ساخته می‌شوند، دلیل پیشنهاد هر assignee نمایش داده می‌شود.
+- کارت «تولید داکیومنت پروژه با AI» در Settings (select پروژه + پیش‌نمایش Markdown + کپی)؛ ویرایشگر skills در ProjectMembers (self/ADMIN).
+- i18n کامل fa/en (Tasks/Members/Settings + ۴ کد خطای جدید)؛ MSW handlerهای AI + POST tasks؛ ResizeObserver polyfill در setup تست.
+- **تست: ۶۷/۶۷ سبز** (تست جریان کامل AI) + typecheck + lint + build.
+
+**Docs (یادگیری)**
+- ۱۸ فایل `LEARNING.md`: نقشه‌ی شروع در ریشه‌ی هر دو اپ + داکیومنت آموزشی داخل ماژول‌ها/پوشه‌های کلیدی (الگوها، سینتکس، تمرین‌های تدریجی) — [server/LEARNING.md](../server/LEARNING.md) · [client/LEARNING.md](../client/LEARNING.md).
+
+**باقی‌مانده‌ی فاز ۷:** Command Palette، heatmap، Monte Carlo، تقویم شمسی، breakdown چندتسکی AI از PRD.
+
+---
 
 ### 2026-10-05 — فاز ۶ (Production-ready) تمام شد ✅
 
