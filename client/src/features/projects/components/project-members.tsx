@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { LogOut, Search, Trash2, UserPlus } from 'lucide-react';
+import { Check, LogOut, Search, Trash2, UserPlus } from 'lucide-react';
 import { useLocale, useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -26,7 +26,7 @@ import {
   useAddMember,
   useProjectMembers,
   useRemoveMember,
-  useUpdateMemberRole,
+  useUpdateMember,
 } from '../hooks/use-projects';
 import { ASSIGNABLE_ROLES, hasRole, type AssignableRole, type Project } from '../types';
 
@@ -39,7 +39,7 @@ export function ProjectMembers({ project }: { project: Project }) {
   const onError = (error: unknown) => toast.error(toMessage(error));
   const { data: me } = useCurrentUser();
   const { data: members, isPending } = useProjectMembers(project.id);
-  const updateRole = useUpdateMemberRole(project.id);
+  const updateMember = useUpdateMember(project.id);
   const removeMember = useRemoveMember(project.id);
 
   const canManage = hasRole(project.myRole, 'ADMIN');
@@ -72,6 +72,20 @@ export function ProjectMembers({ project }: { project: Project }) {
                       {m.user.email}
                     </p>
                   </div>
+                  {/* Skills feed the AI when it suggests assignees (self or admin can edit). */}
+                  {(editable || self) ? (
+                    <SkillsEditor projectId={project.id} userId={m.user.id} skills={m.skills} />
+                  ) : (
+                    m.skills.length > 0 && (
+                      <div className="flex flex-wrap gap-1">
+                        {m.skills.map((skill) => (
+                          <span key={skill} className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">
+                            {skill}
+                          </span>
+                        ))}
+                      </div>
+                    )
+                  )}
                   <span className="text-xs text-muted-foreground">
                     {t('openWork', { tasks: formatNumber(m.openTasks, locale), points: formatNumber(m.openPoints, locale) })}
                   </span>
@@ -79,7 +93,7 @@ export function ProjectMembers({ project }: { project: Project }) {
                     <Select
                       value={m.role}
                       onValueChange={(role) =>
-                        updateRole.mutate({ userId: m.user.id, role: role as AssignableRole }, { onError })
+                        updateMember.mutate({ userId: m.user.id, patch: { role: role as AssignableRole } }, { onError })
                       }
                     >
                       <SelectTrigger className="w-32" aria-label={t('role')}>
@@ -131,6 +145,59 @@ export function ProjectMembers({ project }: { project: Project }) {
         )}
       </CardContent>
     </Card>
+  );
+}
+
+/**
+ * Inline editor for a member's specialties (comma-separated). These strings are what the
+ * AI sees when it suggests assignees for a task, so "backend, api" is enough to be useful.
+ */
+function SkillsEditor({ projectId, userId, skills }: { projectId: number; userId: number; skills: string[] }) {
+  const t = useTranslations('Members');
+  const toMessage = useErrorMessage();
+  const updateMember = useUpdateMember(projectId);
+  const [value, setValue] = useState(skills.join(', '));
+  const dirty = value !== skills.join(', ');
+
+  const save = () => {
+    const next = value
+      .split(',')
+      .map((skill) => skill.trim())
+      .filter(Boolean)
+      .slice(0, 10);
+    updateMember.mutate(
+      { userId, patch: { skills: next } },
+      {
+        onSuccess: () => toast.success(t('skillsSaved')),
+        onError: (error) => toast.error(toMessage(error)),
+      },
+    );
+  };
+
+  return (
+    <div className="flex items-center gap-1">
+      <Input
+        value={value}
+        onChange={(event) => setValue(event.target.value)}
+        placeholder={t('skillsPlaceholder')}
+        aria-label={t('skills')}
+        className="h-8 w-48 text-xs"
+        disabled={updateMember.isPending}
+      />
+      {dirty && (
+        <Button
+          type="button"
+          variant="outline"
+          size="icon"
+          className="size-8"
+          aria-label={t('saveSkills')}
+          disabled={updateMember.isPending}
+          onClick={save}
+        >
+          <Check className="size-3.5" />
+        </Button>
+      )}
+    </div>
   );
 }
 

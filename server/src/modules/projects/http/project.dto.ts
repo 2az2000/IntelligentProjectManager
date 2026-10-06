@@ -45,6 +45,7 @@ export function toProjectDto(view: ProjectView): ProjectDto {
 export const toMemberDto = (m: MemberView) => ({
   user: m.user,
   role: m.role,
+  skills: m.skills,
   joinedAt: m.joinedAt.toISOString(),
   openTasks: m.openTasks,
   openPoints: m.openPoints,

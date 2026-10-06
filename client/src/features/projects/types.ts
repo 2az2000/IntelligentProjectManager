@@ -32,6 +32,8 @@ export interface Project {
 export interface ProjectMember {
   user: UserSummary & { email: string };
   role: ProjectRole;
+  /** Specialties (frontend, backend, marketing…) — used by AI assignee suggestions. */
+  skills: string[];
   joinedAt: string;
   openTasks: number;
   openPoints: number;

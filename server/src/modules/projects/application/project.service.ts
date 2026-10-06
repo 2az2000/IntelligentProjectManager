@@ -1,4 +1,4 @@
-import { ConflictError, ForbiddenError, NotFoundError } from '../../../shared/errors';
+import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from '../../../shared/errors';
 import { checkMembershipChange } from '../domain/membership-rules';
 import { Project, type NewProject, type ProjectChanges } from '../domain/project.entity';
 import { hasRole, type ProjectRole } from '../domain/project-role';
@@ -92,7 +92,7 @@ export class ProjectService {
   async addMember(
     actorId: number,
     projectId: number,
-    input: { userId: number; role: ProjectRole },
+    input: { userId: number; role: ProjectRole; skills?: string[] },
   ): Promise<MemberView> {
     const actorRole = await this.assertRole(projectId, actorId, 'VIEWER');
     this.enforce(checkMembershipChange({ actorRole, actorIsTarget: false, targetRole: null, newRole: input.role }));
@@ -102,22 +102,31 @@ export class ProjectService {
     if (await this.projects.findRole(projectId, input.userId)) {
       throw new ConflictError('ALREADY_MEMBER', 'User is already a member of this project');
     }
-    await this.projects.addMember(projectId, input.userId, input.role);
+    await this.projects.addMember(projectId, input.userId, input.role, input.skills ?? []);
     return this.getMember(projectId, input.userId);
   }
 
-  async updateMemberRole(
+  /** Updates a member's role and/or skills (the two fields admins and members manage). */
+  async updateMember(
     actorId: number,
     projectId: number,
     targetId: number,
-    role: ProjectRole,
+    patch: { role?: ProjectRole; skills?: string[] },
   ): Promise<MemberView> {
+    if (patch.role === undefined && patch.skills === undefined) {
+      throw new ValidationError();
+    }
     const actorRole = await this.assertRole(projectId, actorId, 'VIEWER');
-    const targetRole = await this.memberRole(projectId, targetId);
-    this.enforce(
-      checkMembershipChange({ actorRole, actorIsTarget: actorId === targetId, targetRole, newRole: role }),
-    );
-    await this.projects.updateMemberRole(projectId, targetId, role);
+    if (patch.role !== undefined) {
+      const targetRole = await this.memberRole(projectId, targetId);
+      this.enforce(
+        checkMembershipChange({ actorRole, actorIsTarget: actorId === targetId, targetRole, newRole: patch.role }),
+      );
+    }
+    if (patch.skills !== undefined && actorId !== targetId && !hasRole(actorRole, 'ADMIN')) {
+      throw new ForbiddenError('INSUFFICIENT_ROLE', 'Only admins can edit someone else’s skills');
+    }
+    await this.projects.updateMember(projectId, targetId, patch);
     return this.getMember(projectId, targetId);
   }
 

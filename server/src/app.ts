@@ -24,6 +24,7 @@ import { createActivityModule } from './modules/activity';
 import { createAttachmentsModule } from './modules/attachments';
 import { createNotificationsModule } from './modules/notifications';
 import { createJobsModule } from './modules/jobs';
+import { createAiModule } from './modules/ai';
 import { publish } from './shared/realtime/bus';
 
 export function createApp(deps: { db: Db } = { db: prisma }) {
@@ -104,6 +105,8 @@ export function createApp(deps: { db: Db } = { db: prisma }) {
   const notifications = createNotificationsModule({ db });
   // Disabled in tests (and wherever REDIS_URL is unreachable).
   const jobs = createJobsModule({ db });
+  // Phase 7: AI previews (task enrichment + project docs) — 503 without AI_API_KEY.
+  const ai = createAiModule({ db, projects: projects.service });
 
   // Cross-module reaction without a hard dependency from projects to tasks.
   projects.service.hooks.onMemberRemoved = (projectId, userId) =>
@@ -167,6 +170,7 @@ export function createApp(deps: { db: Db } = { db: prisma }) {
   app.use('/auth', auth.router);
   app.use('/users', users.router);
   app.use('/projects/:projectId/tasks', tasks.projectTasksRouter);
+  app.use('/projects/:projectId/ai', ai.aiRouter);
   app.use('/projects', projects.router);
   app.use('/tasks/:taskId/comments', comments.taskCommentsRouter);
   app.use('/tasks', tasks.tasksRouter);

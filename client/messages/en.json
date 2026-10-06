@@ -139,6 +139,9 @@
     "subtask": "Subtask",
     "subtasks": "Subtasks",
     "addSubtask": "Add a subtask",
+    "aiComplete": "Complete with AI",
+    "aiSubtasks": "AI-suggested subtasks",
+    "removeSuggestion": "Remove suggestion",
     "delete": "Delete task",
     "deleteTitle": "Delete “{title}”?",
     "deleteDescription": "This permanently removes the task, its subtasks and comments.",
@@ -235,7 +238,11 @@
     "leave": "Leave project",
     "leaveTitle": "Leave this project?",
     "leaveDescription": "You will lose access to “{project}”.",
-    "utilized": "{percent}% utilized"
+    "utilized": "{percent}% utilized",
+    "skills": "Skills",
+    "skillsPlaceholder": "backend, frontend, marketing, ...",
+    "saveSkills": "Save skills",
+    "skillsSaved": "Skills saved"
   },
   "Comments": {
     "title": "Comments",
@@ -339,7 +346,14 @@
     "emailNotificationsDescription": "Receive daily summaries via email.",
     "pushNotifications": "Push Notifications",
     "pushNotificationsDescription": "Receive real-time updates in browser.",
-    "saveChanges": "Save Changes"
+    "saveChanges": "Save Changes",
+    "aiDocTitle": "AI project documentation",
+    "aiDocDescription": "Generates full project documentation (goals, team, work breakdown, timeline, risks) from real project data.",
+    "aiDocSelectProject": "Select a project",
+    "aiDocGenerate": "Generate documentation",
+    "aiDocGenerating": "Generating documentation... this can take a few seconds.",
+    "aiDocCopy": "Copy Markdown",
+    "aiDocCopied": "Documentation copied"
   },
   "Validation": {
     "required": "This field is required",
@@ -377,6 +391,10 @@
     "NOTIFICATION_NOT_FOUND": "Notification not found.",
     "ROUTE_NOT_FOUND": "The requested resource does not exist.",
     "INTERNAL_ERROR": "The server encountered an error. Please try again.",
+    "AI_NOT_CONFIGURED": "AI is not configured on this server (set AI_API_KEY in server/.env).",
+    "AI_PROVIDER_ERROR": "The AI service is unavailable. Please try again shortly.",
+    "AI_BAD_RESPONSE": "The AI response could not be read. Please try again.",
+    "AI_TIMEOUT": "The AI took too long to answer. Please try again.",
     "UNKNOWN_ERROR": "Something went wrong."
   },
   "Auth": {

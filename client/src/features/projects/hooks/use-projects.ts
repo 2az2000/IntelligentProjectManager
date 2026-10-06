@@ -80,12 +80,12 @@ function useMemberMutation<TVars>(projectId: number, fn: (vars: TVars) => Promis
 }
 
 export const useAddMember = (projectId: number) =>
-  useMemberMutation(projectId, ({ userId, role }: { userId: number; role: AssignableRole }) =>
-    projectApi.addMember(projectId, userId, role),
+  useMemberMutation(projectId, ({ userId, role, skills }: { userId: number; role: AssignableRole; skills?: string[] }) =>
+    projectApi.addMember(projectId, userId, role, skills),
   );
-export const useUpdateMemberRole = (projectId: number) =>
-  useMemberMutation(projectId, ({ userId, role }: { userId: number; role: AssignableRole }) =>
-    projectApi.updateMember(projectId, userId, role),
+export const useUpdateMember = (projectId: number) =>
+  useMemberMutation(projectId, ({ userId, patch }: { userId: number; patch: { role?: AssignableRole; skills?: string[] } }) =>
+    projectApi.updateMember(projectId, userId, patch),
   );
 export const useRemoveMember = (projectId: number) =>
   useMemberMutation(projectId, (userId: number) => projectApi.removeMember(projectId, userId));

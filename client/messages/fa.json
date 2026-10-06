@@ -139,6 +139,9 @@
     "subtask": "زیرتسک",
     "subtasks": "زیرتسک‌ها",
     "addSubtask": "افزودن زیرتسک",
+    "aiComplete": "تکمیل با هوش مصنوعی",
+    "aiSubtasks": "زیرتسک‌های پیشنهادی هوش مصنوعی",
+    "removeSuggestion": "حذف پیشنهاد",
     "delete": "حذف تسک",
     "deleteTitle": "حذف «{title}»؟",
     "deleteDescription": "تسک با همه‌ی زیرتسک‌ها و کامنت‌هایش برای همیشه حذف می‌شود.",
@@ -235,7 +238,11 @@
     "leave": "ترک پروژه",
     "leaveTitle": "ترک این پروژه؟",
     "leaveDescription": "دسترسی شما به «{project}» قطع می‌شود.",
-    "utilized": "{percent}٪ درگیر"
+    "utilized": "{percent}٪ درگیر",
+    "skills": "مهارت‌ها",
+    "skillsPlaceholder": "backend، frontend، مارکتینگ، ...",
+    "saveSkills": "ذخیره مهارت‌ها",
+    "skillsSaved": "مهارت‌ها ذخیره شد"
   },
   "Comments": {
     "title": "نظرات",
@@ -339,7 +346,14 @@
     "emailNotificationsDescription": "دریافت خلاصه‌ی روزانه از طریق ایمیل.",
     "pushNotifications": "اعلان مرورگر",
     "pushNotificationsDescription": "دریافت به‌روزرسانی‌های لحظه‌ای در مرورگر.",
-    "saveChanges": "ذخیره‌ی تغییرات"
+    "saveChanges": "ذخیره‌ی تغییرات",
+    "aiDocTitle": "تولید داکیومنت پروژه با هوش مصنوعی",
+    "aiDocDescription": "داکیومنت کامل پروژه (اهداف، تیم، کارها، زمان‌بندی و ریسک‌ها) از روی داده‌های واقعی پروژه ساخته می‌شود.",
+    "aiDocSelectProject": "انتخاب پروژه",
+    "aiDocGenerate": "تولید داکیومنت",
+    "aiDocGenerating": "در حال تولید داکیومنت... ممکن است چند ثانیه طول بکشد.",
+    "aiDocCopy": "کپی مارک‌داون",
+    "aiDocCopied": "داکیومنت کپی شد"
   },
   "Validation": {
     "required": "این فیلد الزامی است",
@@ -377,6 +391,10 @@
     "NOTIFICATION_NOT_FOUND": "اعلان پیدا نشد.",
     "ROUTE_NOT_FOUND": "منبع درخواست‌شده وجود ندارد.",
     "INTERNAL_ERROR": "خطایی در سرور رخ داد. دوباره تلاش کنید.",
+    "AI_NOT_CONFIGURED": "هوش مصنوعی روی سرور تنظیم نشده است (کلید AI_API_KEY را در server/.env بگذارید).",
+    "AI_PROVIDER_ERROR": "سرویس هوش مصنوعی در دسترس نیست. کمی بعد دوباره تلاش کنید.",
+    "AI_BAD_RESPONSE": "پاسخ هوش مصنوعی قابل خواندن نبود. دوباره تلاش کنید.",
+    "AI_TIMEOUT": "هوش مصنوعی دیر پاسخ داد. دوباره تلاش کنید.",
     "UNKNOWN_ERROR": "خطایی رخ داد."
   },
   "Auth": {

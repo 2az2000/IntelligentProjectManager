@@ -22,10 +22,19 @@ export const projectApi = {
 
   members: async (projectId: number): Promise<ProjectMember[]> =>
     (await apiClient.get<ProjectMember[]>(`/projects/${projectId}/members`)).data,
-  addMember: async (projectId: number, userId: number, role: AssignableRole): Promise<ProjectMember> =>
-    (await apiClient.post<ProjectMember>(`/projects/${projectId}/members`, { userId, role })).data,
-  updateMember: async (projectId: number, userId: number, role: AssignableRole): Promise<ProjectMember> =>
-    (await apiClient.patch<ProjectMember>(`/projects/${projectId}/members/${userId}`, { role })).data,
+  addMember: async (
+    projectId: number,
+    userId: number,
+    role: AssignableRole,
+    skills?: string[],
+  ): Promise<ProjectMember> =>
+    (await apiClient.post<ProjectMember>(`/projects/${projectId}/members`, { userId, role, skills })).data,
+  updateMember: async (
+    projectId: number,
+    userId: number,
+    patch: { role?: AssignableRole; skills?: string[] },
+  ): Promise<ProjectMember> =>
+    (await apiClient.patch<ProjectMember>(`/projects/${projectId}/members/${userId}`, patch)).data,
   removeMember: async (projectId: number, userId: number): Promise<void> => {
     await apiClient.delete(`/projects/${projectId}/members/${userId}`);
   },
