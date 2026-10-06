@@ -107,6 +107,28 @@ export function useDeleteTask() {
   });
 }
 
+// ---- §11 recycling bin ------------------------------------------------------------------
+
+export function useTrashTasks(projectId: number) {
+  return useQuery({
+    queryKey: qk.tasks.trash(projectId),
+    queryFn: () => taskApi.trash(projectId),
+    enabled: validId(projectId),
+  });
+}
+
+export function useRestoreTask(projectId: number) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (taskId: number) => taskApi.restore(projectId, taskId),
+    onSuccess: () =>
+      Promise.all([
+        queryClient.invalidateQueries({ queryKey: qk.tasks.trash(projectId) }),
+        invalidateTaskViews(queryClient),
+      ]),
+  });
+}
+
 // ---- comments ----------------------------------------------------------------------------
 
 export function useComments(taskId: number) {

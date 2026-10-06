@@ -6,11 +6,13 @@ import { toMemberDto, toProjectDto, toTeammateDto } from './project.dto';
 import {
   addMemberBody,
   createProjectBody,
+  fromTemplateBody,
   memberParams,
   projectIdParams,
   updateMemberBody,
   updateProjectBody,
 } from './project.schemas';
+import { PROJECT_TEMPLATES } from '../templates';
 
 /** Mounted at /projects */
 export function createProjectRouter(projects: ProjectService): Router {
@@ -28,6 +30,22 @@ export function createProjectRouter(projects: ProjectService): Router {
     '/',
     handle({ body: createProjectBody }, async ({ body }, req, res) => {
       res.status(201).json(toProjectDto(await projects.create(currentUserId(req), body)));
+    }),
+  );
+
+  // §11 project templates: list them; create-from-template returns the full project.
+  router.get(
+    '/templates',
+    handle({}, async (_input, _req, res) => {
+      res.json(PROJECT_TEMPLATES);
+    }),
+  );
+  router.post(
+    '/from-template',
+    handle({ body: fromTemplateBody }, async ({ body }, req, res) => {
+      const { templateId, ...projectInput } = body;
+      const view = await projects.createFromTemplate(currentUserId(req), projectInput, templateId);
+      res.status(201).json({ ...toProjectDto(view), templateApplied: view.templateApplied });
     }),
   );
 

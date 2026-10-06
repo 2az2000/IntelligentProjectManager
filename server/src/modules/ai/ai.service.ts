@@ -131,7 +131,11 @@ export class AiService {
 
     let res = await this.request(base);
     // Some OpenAI-compatible providers reject response_format — retry once without it.
-    if (res.status === 400 && opts.json) res = await this.request(base);
+    if (res.status === 400 && opts.json) {
+      const rest = { ...base };
+      delete rest.response_format;
+      res = await this.request(rest);
+    }
     if (!res.ok) {
       throw new AppError(502, 'AI_PROVIDER_ERROR', `The AI provider responded with HTTP ${res.status}`);
     }

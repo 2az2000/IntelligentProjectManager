@@ -23,6 +23,18 @@ export function generateStaticParams() {
   return routing.locales.map((locale) => ({ locale }));
 }
 
+/** §10 a11y: first Tab focuses this link; keyboard/screen-reader users jump past the sidebar. */
+function SkipLink({ label }: { label: string }) {
+  return (
+    <a
+      href="#main-content"
+      className="sr-only focus:not-sr-only focus:absolute focus:start-2 focus:top-2 focus:z-50 focus:rounded-md focus:bg-primary focus:px-3 focus:py-2 focus:text-sm focus:text-primary-foreground"
+    >
+      {label}
+    </a>
+  );
+}
+
 export default async function LocaleLayout({
   children,
   params,
@@ -43,6 +55,7 @@ export default async function LocaleLayout({
     >
       <body className="flex min-h-screen flex-col bg-background text-foreground antialiased">
         <NextIntlClientProvider>
+          <SkipLink label={locale === 'fa' ? 'پرش به محتوای اصلی' : 'Skip to main content'} />
           <Providers>{children}</Providers>
         </NextIntlClientProvider>
         <RegisterServiceWorker />

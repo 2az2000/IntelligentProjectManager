@@ -1,5 +1,6 @@
-import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from '../../../shared/errors';
+import { AppError, ConflictError, ForbiddenError, NotFoundError, ValidationError } from '../../../shared/errors';
 import { checkMembershipChange } from '../domain/membership-rules';
+import { findTemplate } from '../templates';
 import { Project, type NewProject, type ProjectChanges } from '../domain/project.entity';
 import { hasRole, type ProjectRole } from '../domain/project-role';
 import type {
@@ -21,8 +22,26 @@ export interface UserLookup {
   exists(userId: number): Promise<boolean>;
 }
 
+/** What template application needs from the tasks & scheduling modules. */
+export interface TemplateApply {
+  createTask(
+    userId: number,
+    projectId: number,
+    input: {
+      title: string;
+      description: string | null;
+      priority: 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';
+      estimateHours: number | null;
+    },
+  ): Promise<number>;
+  linkDependency(userId: number, projectId: number, predecessorId: number, successorId: number): Promise<void>;
+}
+
 export class ProjectService {
   readonly hooks: ProjectHooks = {};
+
+  /** Wired in the composition root; without it createFromTemplate answers 503. */
+  templateApply?: TemplateApply;
 
   constructor(
     private readonly projects: ProjectRepository,
@@ -142,6 +161,44 @@ export class ProjectService {
 
   teamForUser(userId: number): Promise<TeammateView[]> {
     return this.projects.teamForUser(userId, this.clock());
+  }
+
+  /** §11: creates the project AND its template tasks (with finish-to-start edges). */
+  async createFromTemplate(
+    userId: number,
+    input: NewProject,
+    templateId: string,
+  ): Promise<ProjectView & { templateApplied: string }> {
+    const template = findTemplate(templateId);
+    if (!template) throw new ValidationError(null, 'Unknown template id');
+    if (!this.templateApply) {
+      throw new AppError(503, 'TEMPLATES_NOT_WIRED', 'Template task creation is not wired in this build');
+    }
+    const created = await this.create(userId, input); // owner role: MEMBER on own project
+
+    // Insert in order, resolve titles to ids, then link the declared dependencies.
+    const idByTitle = new Map<string, number>();
+    for (const t of template.tasks) {
+      idByTitle.set(
+        t.title,
+        await this.templateApply.createTask(userId, created.project.id, {
+          title: t.title,
+          description: t.description ?? null,
+          priority: t.priority ?? 'MEDIUM',
+          estimateHours: t.estimateHours ?? null,
+        }),
+      );
+    }
+    for (const t of template.tasks) {
+      for (const dep of t.dependsOn ?? []) {
+        const predecessorId = idByTitle.get(dep);
+        const successorId = idByTitle.get(t.title);
+        if (predecessorId && successorId) {
+          await this.templateApply.linkDependency(userId, created.project.id, predecessorId, successorId);
+        }
+      }
+    }
+    return { ...created, templateApplied: template.id };
   }
 
   private async memberRole(projectId: number, userId: number): Promise<ProjectRole> {

@@ -8,7 +8,13 @@ import { currentUserId, requireAuth } from '../../shared/auth/require-auth';
 import { toUserDto, type UsersService } from '../users';
 import { clearAuthCookies, setAuthCookies } from './auth.cookies';
 import type { AuthService } from './auth.service';
-import { changePasswordBody, loginBody, registerBody } from './auth.schemas';
+import {
+  changePasswordBody,
+  forgotPasswordBody,
+  loginBody,
+  registerBody,
+  resetPasswordBody,
+} from './auth.schemas';
 
 const credentialsLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -66,6 +72,27 @@ export function createAuthRouter(auth: AuthService, users: UsersService): Router
     handle({}, async (_input, req, res) => {
       await auth.logout(readRefreshCookie(req.cookies));
       clearAuthCookies(res);
+      res.status(204).end();
+    }),
+  );
+
+  // §11: anti-enumeration — always 204, whether or not the email exists.
+  router.post(
+    '/forgot-password',
+    credentialsLimiter,
+    handle({ body: forgotPasswordBody }, async ({ body }, req, res) => {
+      const origin = `${req.protocol}://${req.get('host')}`;
+      await auth.requestPasswordReset(body.email, origin);
+      res.status(204).end();
+    }),
+  );
+
+  router.post(
+    '/reset-password',
+    credentialsLimiter,
+    handle({ body: resetPasswordBody }, async ({ body }, _req, res) => {
+      await auth.resetPassword(body.token, body.newPassword);
+      clearAuthCookies(res); // old session cookies are worthless now
       res.status(204).end();
     }),
   );

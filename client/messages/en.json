@@ -15,7 +15,8 @@
     "clearDate": "Clear date",
     "previousMonth": "Previous month",
     "nextMonth": "Next month",
-    "today": "Today"
+    "today": "Today",
+    "skipToContent": "Skip to main content"
   },
   "Nav": {
     "dashboard": "Dashboard",
@@ -100,7 +101,16 @@
     "deleteTitle": "Delete “{name}”?",
     "deleteDescription": "This permanently removes the project, its tasks and comments.",
     "deleteConfirm": "This action cannot be undone.",
-    "deleted": "Project deleted"
+    "deleted": "Project deleted",
+    "templateLabel": "Project template (optional)",
+    "templateNone": "No template — empty project",
+    "templateTasks": "ready tasks",
+    "createdFromTemplate": "Project created with template tasks",
+    "trashTitle": "Task recycling bin",
+    "trashDescription": "Deleted tasks of this project; restore them any time.",
+    "trashEmpty": "No deleted tasks",
+    "trashRestore": "Restore",
+    "trashRestored": "Task restored"
   },
   "Tasks": {
     "title": "Tasks",
@@ -242,7 +252,11 @@
     "skills": "Skills",
     "skillsPlaceholder": "backend, frontend, marketing, ...",
     "saveSkills": "Save skills",
-    "skillsSaved": "Skills saved"
+    "skillsSaved": "Skills saved",
+    "heatLegend": "Workload relative to the busiest member:",
+    "loadLow": "Low",
+    "loadMedium": "Medium",
+    "loadHigh": "High"
   },
   "Comments": {
     "title": "Comments",
@@ -270,17 +284,17 @@
       "DAILY_DIGEST": "Your daily digest is ready"
     },
     "types": {
-      "ASSIGNED": "{actor} assigned you to \u201c{task}\u201d",
-      "COMMENTED": "{actor} commented on \u201c{task}\u201d",
-      "MENTIONED": "{actor} mentioned you in \u201c{task}\u201d",
-      "DUE_REMINDER": "\u201c{task}\u201d is due in less than 24 hours",
+      "ASSIGNED": "{actor} assigned you to “{task}”",
+      "COMMENTED": "{actor} commented on “{task}”",
+      "MENTIONED": "{actor} mentioned you in “{task}”",
+      "DUE_REMINDER": "“{task}” is due in less than 24 hours",
       "DAILY_DIGEST": "Your daily digest is ready"
     }
   },
   "Activity": {
     "title": "Activity",
     "empty": "No activity yet",
-    "emptyValue": "\u2014",
+    "emptyValue": "—",
     "unassigned": "Unassigned",
     "actions": {
       "created": "created this task",
@@ -409,7 +423,19 @@
     "signUp": "Sign up",
     "createAccount": "Create account",
     "noAccount": "Don't have an account?",
-    "haveAccount": "Already have an account?"
+    "haveAccount": "Already have an account?",
+    "forgotLink": "Forgot your password?",
+    "forgotTitle": "Password recovery",
+    "forgotDescription": "Enter your account email; we'll send a link to choose a new password (valid 1 hour).",
+    "forgotSent": "If this email is registered, a recovery link was sent. Check your spam folder too.",
+    "forgotSubmit": "Send recovery link",
+    "forgotError": "Could not send the link. Please try again in a few minutes.",
+    "resetTitle": "New password",
+    "resetDescription": "Choose your new password. Every active session will be signed out.",
+    "resetSubmit": "Set new password",
+    "resetDone": "Password changed. Sign in with your new password.",
+    "resetMissingToken": "This recovery link is invalid. Request a new one from the sign-in page.",
+    "resetInvalidToken": "This link has expired or was already used. Please request a new one."
   },
   "NotFound": {
     "title": "Page not found",

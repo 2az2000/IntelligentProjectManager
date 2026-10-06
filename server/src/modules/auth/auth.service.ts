@@ -1,9 +1,11 @@
 import { randomUUID } from 'node:crypto';
 import { env } from '../../config/env';
 import { AppError, UnauthorizedError } from '../../shared/errors';
+import { logger } from '../../shared/logger';
 import { generateRefreshToken, hashRefreshToken, signAccessToken } from '../../shared/auth/tokens';
 import type { User, UsersService } from '../users';
 import { hashPassword, verifyPassword } from './password';
+import { RESET_EMAIL_MAX_PER_HOUR, type PasswordResetRepository } from './password-reset.repository';
 import type { RefreshTokenRepository } from './refresh-token.repository';
 
 export interface AuthTokens {
@@ -24,6 +26,10 @@ export class AuthService {
   constructor(
     private readonly users: UsersService,
     private readonly refreshTokens: RefreshTokenRepository,
+    /** Wired by the module factory; without it reset methods are disabled. */
+    private readonly resetTokens?: PasswordResetRepository,
+    /** Delivery hook (mail transport) — injected so tests can capture the URL. */
+    private readonly sendResetEmail?: ((to: string, name: string, resetUrl: string) => Promise<void>) | undefined,
     private readonly clock: () => Date = () => new Date(),
   ) {}
 
@@ -90,6 +96,42 @@ export class AuthService {
     if (!refreshToken) return;
     const record = await this.refreshTokens.findByHash(hashRefreshToken(refreshToken));
     if (record) await this.refreshTokens.revokeFamily(record.familyId, this.clock());
+  }
+
+  /**
+   * §11: request a password reset. Always resolves without error — the response
+   * must not reveal whether the email has an account (anti-enumeration).
+   */
+  async requestPasswordReset(email: string, appUrl: string): Promise<void> {
+    if (!this.resetTokens) return; // feature disabled (should not happen with the default factory)
+    const now = this.clock();
+    const user = await this.users.findByEmail(email);
+    if (user) {
+      const since = new Date(now.getTime() - 60 * 60 * 1000);
+      if ((await this.resetTokens.countRecent(user.id, since)) >= RESET_EMAIL_MAX_PER_HOUR) {
+        logger.warn({ userId: user.id }, 'password reset request throttled');
+        return; // silently drop — still 204 outside
+      }
+      const token = await this.resetTokens.create(user.id, now);
+      const url = `${appUrl.replace(/\/$/, '')}/reset-password?token=${token}`;
+      await this.sendResetEmail?.(user.email, user.name, url);
+      logger.info({ userId: user.id }, 'password reset email queued (json transport)');
+    }
+  }
+
+  /** Consumes the token, sets the new password and signs out every session. */
+  async resetPassword(rawToken: string, newPassword: string): Promise<void> {
+    if (!this.resetTokens) throw new AppError(400, 'RESET_DISABLED', 'Password reset is not available');
+    const now = this.clock();
+    const record = await this.resetTokens.findUsable(rawToken, now);
+    if (!record) {
+      throw new AppError(400, 'INVALID_RESET_TOKEN', 'Reset link is invalid or has expired');
+    }
+    // Reuse of a consumed token revokes the rest (same signal as refresh reuse).
+    await this.resetTokens.revokeAllForUser(record.userId, now);
+    await this.resetTokens.markUsed(record.id, now);
+    await this.users.setPassword(record.userId, await hashPassword(newPassword));
+    await this.refreshTokens.revokeAllForUser(record.userId, now); // sign out every device
   }
 
   private async issueTokens(userId: number, familyId: string): Promise<AuthTokens> {

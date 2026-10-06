@@ -155,6 +155,26 @@ export class TaskService {
     await this.fire({ actorId: userId, projectId: task.projectId, taskId, kind: 'deleted' });
   }
 
+  /** §11 recycling bin: recently deleted top-level tasks of a project. */
+  async listTrash(userId: number, projectId: number): Promise<TaskView[]> {
+    await this.access.assertRole(projectId, userId, 'VIEWER');
+    return this.tasks.listDeleted(projectId);
+  }
+
+  /** §11 restores a soft-deleted task (author or admin, like delete). */
+  async restore(userId: number, taskId: number): Promise<TaskView> {
+    const task = await this.tasks.findByIdAny(taskId);
+    if (!task) throw taskNotFound();
+    const role = await this.access.assertRole(task.projectId, userId, 'MEMBER');
+    if (task.authorId !== userId && !hasRole(role, 'ADMIN')) {
+      throw new ForbiddenError('INSUFFICIENT_ROLE', 'Only the author or a project admin can restore this task');
+    }
+    const restored = await this.tasks.restore(taskId);
+    if (!restored) throw taskNotFound();
+    await this.fire({ actorId: userId, projectId: task.projectId, taskId, kind: 'updated' });
+    return restored;
+  }
+
   /** Tasks assigned to the user across all their projects (My Tasks, calendar). */
   async listForUser(userId: number, filters: AssignedTaskFilters = {}): Promise<TaskView[]> {
     const projectIds = await this.access.projectIdsForUser(userId);

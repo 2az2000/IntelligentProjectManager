@@ -49,6 +49,11 @@ export const taskApi = {
   },
   mine: async (includeDone: boolean): Promise<Task[]> =>
     (await apiClient.get<Task[]>('/me/tasks', { params: { includeDone } })).data,
+  /** §11 recycling bin */
+  trash: async (projectId: number): Promise<Task[]> =>
+    (await apiClient.get<Task[]>(`/projects/${projectId}/tasks/trash`)).data,
+  restore: async (projectId: number, taskId: number): Promise<Task> =>
+    (await apiClient.post<Task>(`/projects/${projectId}/tasks/trash/${taskId}/restore`, {})).data,
   calendar: async (from: string, to: string, scope: 'mine' | 'all'): Promise<Task[]> =>
     (await apiClient.get<Task[]>('/me/calendar', { params: { from, to, scope } })).data,
 };
