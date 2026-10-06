@@ -19,6 +19,7 @@ import {
   updateTaskBody,
 } from '../modules/tasks';
 import { enrichTaskBody } from '../modules/ai';
+import { forgotPasswordBody, resetPasswordBody } from '../modules/auth';
 
 /**
  * Phase 6: machine-readable API contract served at /docs (Swagger UI) and
@@ -244,6 +245,24 @@ register({
   summary: 'Revoke the session and clear cookies',
   tags: ['Auth'],
   responses: { 204: noContent() },
+});
+
+register({
+  method: 'post',
+  path: '/auth/forgot-password',
+  summary: 'Request a password reset email (always 204 — never reveals if the email exists)',
+  tags: ['Auth'],
+  request: { body: { content: json(forgotPasswordBody), required: true } },
+  responses: { 204: noContent(), 400: error, 429: error },
+});
+
+register({
+  method: 'post',
+  path: '/auth/reset-password',
+  summary: 'Set a new password with a reset token (signs out every session)',
+  tags: ['Auth'],
+  request: { body: { content: json(resetPasswordBody), required: true } },
+  responses: { 204: noContent(), 400: error, 429: error },
 });
 
 register({

@@ -23,3 +23,17 @@ export const loginBody = z
     password: z.string().min(1).max(128),
   })
   .strict();
+
+export const forgotPasswordBody = z
+  .object({
+    // §11: the email field must not leak which accounts exist → always 204 outside.
+    email,
+  })
+  .strict();
+
+export const resetPasswordBody = z
+  .object({
+    token: z.string().min(10).max(200),
+    newPassword: z.string().min(8).max(128),
+  })
+  .strict();

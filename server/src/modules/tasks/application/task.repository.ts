@@ -72,12 +72,18 @@ export type TaskPatch = Partial<
 export interface TaskRepository {
   create(data: ValidNewTask): Promise<TaskView>;
   findById(id: number): Promise<Task | null>;
+  /** Like findById but also sees soft-deleted rows (recycling-bin restore). */
+  findByIdAny(id: number): Promise<Task | null>;
   getDetail(id: number): Promise<TaskDetailView | null>;
   list(projectId: number, filters: TaskFilters): Promise<TaskView[]>;
   listForUser(userId: number, projectIds: number[], filters: AssignedTaskFilters): Promise<TaskView[]>;
   update(id: number, patch: TaskPatch): Promise<TaskView>;
   /** Soft-deletes the task and its subtasks. */
   softDelete(id: number, now: Date): Promise<void>;
+  /** §11 recycling bin: deleted top-level tasks with their subtask counts. */
+  listDeleted(projectId: number): Promise<TaskView[]>;
+  /** Restores the task (and any subtasks deleted in the same action). */
+  restore(id: number): Promise<TaskView | null>;
   /** Highest position among siblings (same project, parent and — for top level — status). */
   lastPosition(projectId: number, parentId: number | null, status: TaskStatus): Promise<number | undefined>;
   positions(ids: number[]): Promise<PositionInfo[]>;

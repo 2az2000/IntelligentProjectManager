@@ -11,7 +11,7 @@ export default function AuthLayout({ children }: { children: ReactNode }) {
         </Suspense>
         <ModeToggle />
       </header>
-      <main className="flex flex-1 items-center justify-center px-4 pb-16">{children}</main>
+      <main id="main-content" className="flex flex-1 items-center justify-center px-4 pb-16">{children}</main>
     </div>
   );
 }

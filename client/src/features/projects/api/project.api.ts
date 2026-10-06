@@ -1,5 +1,5 @@
 import { apiClient } from '@/lib/api-client';
-import type { AssignableRole, Project, ProjectMember, Teammate } from '../types';
+import type { AssignableRole, Project, ProjectMember, ProjectTemplate, Teammate } from '../types';
 
 export interface ProjectInput {
   name: string;
@@ -14,6 +14,15 @@ export const projectApi = {
     (await apiClient.get<Project>(`/projects/${projectId}`)).data,
   create: async (input: ProjectInput): Promise<Project> =>
     (await apiClient.post<Project>('/projects', input)).data,
+  /** §11 built-in templates (tasks + dependency edges). */
+  templates: async (): Promise<ProjectTemplate[]> =>
+    (await apiClient.get<ProjectTemplate[]>('/projects/templates')).data,
+  createFromTemplate: async (
+    templateId: string,
+    input: ProjectInput,
+  ): Promise<Project & { templateApplied: string }> =>
+    (await apiClient.post<Project & { templateApplied: string }>('/projects/from-template', { ...input, templateId }))
+      .data,
   update: async (projectId: number, input: Partial<ProjectInput>): Promise<Project> =>
     (await apiClient.patch<Project>(`/projects/${projectId}`, input)).data,
   remove: async (projectId: number): Promise<void> => {

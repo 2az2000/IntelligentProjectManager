@@ -74,6 +74,11 @@ export function LoginForm() {
           {t('signIn')}
         </Button>
         <p className="text-center text-sm text-muted-foreground">
+          <Link href="/forgot-password" className="font-medium text-primary underline-offset-4 hover:underline">
+            {t('forgotLink')}
+          </Link>
+        </p>
+        <p className="text-center text-sm text-muted-foreground">
           {t('noAccount')}{' '}
           <Link href={{ pathname: '/register', query: { next } }} className="font-medium text-primary underline-offset-4 hover:underline">
             {t('signUp')}

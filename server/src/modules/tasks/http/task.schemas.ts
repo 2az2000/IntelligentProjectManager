@@ -4,6 +4,9 @@ import { MAX_TAGS, TASK_PRIORITIES, TASK_STATUSES } from '../domain/task.entity'
 const id = z.coerce.number().int().positive();
 
 export const taskIdParams = z.object({ taskId: id });
+
+/** §11 recycling bin: POST /projects/:projectId/tasks/trash/:taskId/restore */
+export const trashRestoreParams = z.object({ projectId: id, taskId: id });
 export const projectIdParams = z.object({ projectId: id });
 
 const nullableDate = z.coerce.date().nullable();

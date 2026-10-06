@@ -140,6 +140,18 @@ export const schedule: ScheduleResult = {
 
 export const dependencies = [{ predecessorId: 1, successorId: 2, type: 'FINISH_TO_START' as const }];
 
+/** §11 built-in template fixture (mirrors server/templates.ts). */
+export const softwareLaunchTemplate = {
+  id: 'software-launch',
+  name: 'راه‌اندازی محصول نرم‌افزاری',
+  nameEn: 'Software product launch',
+  description: 'از طراحی تا انتشار.',
+  tasks: [
+    { title: 'طراحی وایرفریم', priority: 'HIGH', estimateHours: 16 },
+    { title: 'پیاده‌سازی فرانت‌اند', priority: 'HIGH', estimateHours: 60, dependsOn: ['طراحی وایرفریم'] },
+  ],
+};
+
 export const notifications: Notification[] = [
   {
     id: 11,
@@ -208,8 +220,13 @@ export const handlers = [
   ),
   http.get(`${API}/projects`, () => HttpResponse.json([project])),
   http.get(`${API}/projects/1`, () => HttpResponse.json(project)),
+  http.get(`${API}/projects/templates`, () => HttpResponse.json([softwareLaunchTemplate])),
   http.get(`${API}/projects/1/members`, () => HttpResponse.json([projectMember])),
   http.get(`${API}/projects/1/tasks`, () => HttpResponse.json(tasks)),
+  http.get(`${API}/projects/1/tasks/trash`, () => HttpResponse.json([])),
+  http.post(`${API}/projects/1/tasks/trash/:taskId/restore`, ({ params }) =>
+    HttpResponse.json(task({ id: Number(params.taskId), title: 'Restored task' })),
+  ),
   http.post(`${API}/projects/1/tasks`, async ({ request }) => {
     const body = (await request.json()) as { title: string; parentId?: number | null };
     return HttpResponse.json(task({ id: body.parentId ?? 1000, title: body.title, parentId: body.parentId ?? null }), {

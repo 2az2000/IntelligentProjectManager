@@ -46,3 +46,18 @@ export interface Teammate {
   openPoints: number;
   overdueTasks: number;
 }
+
+/** §11 built-in project template (mirrors server/templates.ts). */
+export interface ProjectTemplate {
+  id: string;
+  name: string;
+  nameEn: string;
+  description: string;
+  tasks: {
+    title: string;
+    description?: string;
+    priority?: 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';
+    estimateHours?: number;
+    dependsOn?: string[];
+  }[];
+}

@@ -19,6 +19,7 @@ export const qk = {
     detail: (taskId: number) => ['tasks', 'detail', taskId] as const,
     mine: (includeDone: boolean) => ['tasks', 'mine', includeDone] as const,
     calendar: (from: string, to: string, scope: string) => ['tasks', 'calendar', from, to, scope] as const,
+    trash: (projectId: number) => ['tasks', 'trash', projectId] as const,
   },
   comments: {
     byTask: (taskId: number) => ['comments', taskId] as const,

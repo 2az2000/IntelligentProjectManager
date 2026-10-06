@@ -80,6 +80,12 @@ export class PrismaTaskRepository implements TaskRepository {
     return row ? Task.restore(toProps(row)) : null;
   }
 
+  /** §11: finds soft-deleted rows too (restore flow checks deletedAt itself). */
+  async findByIdAny(id: number): Promise<Task | null> {
+    const row = await this.db.task.findFirst({ where: { id } });
+    return row ? Task.restore(toProps(row)) : null;
+  }
+
   async getDetail(id: number): Promise<TaskDetailView | null> {
     const row = await this.db.task.findFirst({ where: { id, ...alive }, include: viewInclude });
     if (!row) return null;
@@ -139,6 +145,33 @@ export class PrismaTaskRepository implements TaskRepository {
       where: { OR: [{ id }, { parentId: id }], deletedAt: null },
       data: { deletedAt: now },
     });
+  }
+
+  /** §11 recycling bin: only top-level rows; subtasks come along via subtaskCount views. */
+  async listDeleted(projectId: number): Promise<TaskView[]> {
+    const rows = await this.db.task.findMany({
+      where: { projectId, deletedAt: { not: null }, parentId: null },
+      include: viewInclude,
+      orderBy: { updatedAt: 'desc' },
+    });
+    return rows.map(toView);
+  }
+
+  /** Restores the task and any subtasks soft-deleted at/after the parent's own deletion. */
+  async restore(id: number): Promise<TaskView | null> {
+    const parent = await this.db.task.findFirst({
+      where: { id, deletedAt: { not: null }, parentId: null },
+      select: { deletedAt: true },
+    });
+    if (!parent) return null;
+    // Same-timestamp match covers the delete action (one updateMany stamps both rows);
+    // `gte` also catches subtasks deleted by later, separate delete calls.
+    await this.db.task.updateMany({
+      where: { OR: [{ id }, { parentId: id }], deletedAt: { gte: parent.deletedAt! } },
+      data: { deletedAt: null, completedAt: null },
+    });
+    const restored = await this.db.task.findFirst({ where: { id }, include: viewInclude });
+    return restored ? toView(restored) : null;
   }
 
   async lastPosition(

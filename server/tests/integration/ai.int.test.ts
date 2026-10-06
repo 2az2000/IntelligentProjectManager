@@ -19,6 +19,9 @@ const completion = (content: string) =>
 
 describe('AI endpoints without a key', () => {
   it('answers 503 AI_NOT_CONFIGURED and leaves the rest of the API untouched', async () => {
+    // Runs even when the developer's own server/.env carries a real key.
+    const hadKey = (env as { AI_API_KEY?: string }).AI_API_KEY;
+    delete (env as { AI_API_KEY?: string }).AI_API_KEY;
     const me = await createUser();
     const project = await createProject(me.id);
     const agent = await loginAs(app, me.email);
@@ -29,6 +32,8 @@ describe('AI endpoints without a key', () => {
 
     // Health endpoint still works — a missing AI key must not break the server.
     expect((await request(app).get('/health')).status).toBe(200);
+
+    if (hadKey) (env as { AI_API_KEY?: string }).AI_API_KEY = hadKey;
   });
 });
 
@@ -110,6 +115,7 @@ describe('AI endpoints with a stubbed provider', () => {
     expect(res.status).toBe(200);
     expect(res.body.markdown).toContain('# Project');
     expect(res.body.model).toBe(env.AI_MODEL);
+    expect(res.body.model).toContain(':free');
   });
 
   it('hides projects from non-members and blocks VIEWERs from enrichment', async () => {

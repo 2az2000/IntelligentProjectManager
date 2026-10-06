@@ -43,3 +43,14 @@ export const updateMemberBody = z
   .object({ role: assignableRole.optional(), skills: skills.optional() })
   .strict()
   .refine((body) => body.role !== undefined || body.skills !== undefined, 'At least one field is required');
+
+/** §11: createProjectBody + the chosen template id. */
+export const fromTemplateBody = z
+  .object({
+    templateId: z.string().trim().min(1).max(60),
+    name: z.string().trim().min(1).max(120),
+    description: z.string().trim().max(2000).nullish(),
+    startDate: z.coerce.date().nullish(),
+    endDate: z.coerce.date().nullish(),
+  })
+  .strict();

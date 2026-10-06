@@ -29,6 +29,24 @@ export function useCreateProject() {
   });
 }
 
+/** §11 built-in templates for the "new project" dialog. */
+export function useProjectTemplates() {
+  return useQuery({ queryKey: ['projects', 'templates'] as const, queryFn: projectApi.templates, staleTime: Infinity });
+}
+
+export function useCreateProjectFromTemplate() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ templateId, input }: { templateId: string; input: ProjectInput }) =>
+      projectApi.createFromTemplate(templateId, input),
+    onSuccess: () =>
+      Promise.all([
+        queryClient.invalidateQueries({ queryKey: qk.projects.all }),
+        queryClient.invalidateQueries({ queryKey: qk.dashboard }),
+      ]),
+  });
+}
+
 export function useUpdateProject(projectId: number) {
   const queryClient = useQueryClient();
   return useMutation({

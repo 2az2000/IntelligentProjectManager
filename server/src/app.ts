@@ -100,6 +100,22 @@ export function createApp(deps: { db: Db } = { db: prisma }) {
   const comments = createCommentsModule({ db, tasks: tasks.service });
   const dashboard = createDashboardModule({ db, projects: projects.service });
   const scheduling = createSchedulingModule({ db, projects: projects.service });
+  // §11 templates: projects may create tasks/dependencies through the owning modules
+  // (wired after both modules exist — the closure resolves them lazily at call time).
+  projects.service.templateApply = {
+    createTask: async (userId, projectId, input) => {
+      const task = await tasks.service.create(userId, {
+        projectId,
+        title: input.title,
+        description: input.description ?? undefined,
+        priority: input.priority,
+        estimateHours: input.estimateHours ?? undefined,
+      });
+      return task.id;
+    },
+    linkDependency: (userId, _projectId, predecessorId, successorId) =>
+      scheduling.dependencies.create(userId, predecessorId, successorId).then(() => undefined),
+  };
   const activity = createActivityModule({ db, tasks: tasks.service });
   const attachments = createAttachmentsModule({ db, tasks: tasks.service });
   const notifications = createNotificationsModule({ db });

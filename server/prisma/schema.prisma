@@ -43,6 +43,7 @@ model User {
 
   memberships     ProjectMember[]
   refreshTokens   RefreshToken[]
+  passwordResetTokens PasswordResetToken[]
   ownedProjects   Project[]       @relation("ProjectOwner")
   authoredTasks   Task[]          @relation("TaskAuthor")
   assignedTasks   Task[]          @relation("TaskAssignee")
@@ -54,6 +55,20 @@ model User {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+/// §11: one-time password reset tokens (hashed; 1h expiry; reuse revokes the family of recent tokens).
+model PasswordResetToken {
+  id        String    @id @default(uuid())
+  userId    Int
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
 
 model RefreshToken {

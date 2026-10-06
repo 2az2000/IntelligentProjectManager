@@ -11,6 +11,7 @@ import {
   myTasksQuery,
   projectIdParams,
   taskIdParams,
+  trashRestoreParams,
   updateTaskBody,
 } from './task.schemas';
 
@@ -24,6 +25,21 @@ export function createProjectTasksRouter(tasks: TaskService): Router {
     handle({ params: projectIdParams, query: listTasksQuery }, async ({ params, query }, req, res) => {
       const list = await tasks.list(currentUserId(req), params.projectId, query);
       res.json(list.map(toTaskDto));
+    }),
+  );
+
+  // §11 recycling bin: deleted tasks + restore (mounted at /projects/:projectId/tasks).
+  router.get(
+    '/trash',
+    handle({ params: projectIdParams }, async ({ params }, req, res) => {
+      const list = await tasks.listTrash(currentUserId(req), params.projectId);
+      res.json(list.map(toTaskDto));
+    }),
+  );
+  router.post(
+    '/trash/:taskId/restore',
+    handle({ params: trashRestoreParams }, async ({ params }, req, res) => {
+      res.json(toTaskDto(await tasks.restore(currentUserId(req), params.taskId)));
     }),
   );
 

@@ -29,11 +29,12 @@ const envSchema = z.object({
   RATE_LIMIT_PER_MINUTE: z.coerce.number().int().positive().default(300),
   // Phase 5: realtime + background jobs.
   REDIS_URL: z.string().default('redis://localhost:6379'),
-  // Phase 7: free-tier LLM through any OpenAI-compatible endpoint (Groq by default).
-  // Without AI_API_KEY the /ai endpoints answer 503 AI_NOT_CONFIGURED and everything else works.
+  // Phase 7: free-tier LLM through any OpenAI-compatible endpoint (OpenRouter by default:
+  // Groq is blocked for Iranian IPs). DeepSeek V3.2 via its `:free` route is strong at
+  // structured JSON output. Without AI_API_KEY the /ai endpoints answer 503 AI_NOT_CONFIGURED.
   AI_API_KEY: z.string().min(1).optional(),
-  AI_BASE_URL: z.url().default('https://api.groq.com/openai/v1'),
-  AI_MODEL: z.string().default('llama-3.3-70b-versatile'),
+  AI_BASE_URL: z.url().default('https://openrouter.ai/api/v1'),
+  AI_MODEL: z.string().default('deepseek/deepseek-v3.2-exp:free'),
   AI_TIMEOUT_MS: z.coerce.number().int().positive().default(60_000),
   JOBS_ENABLED: z
     .preprocess((value) => (value === undefined || value === '' ? undefined : value === 'true' || value === '1'), z.boolean().default(true)),

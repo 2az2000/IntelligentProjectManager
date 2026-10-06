@@ -12,7 +12,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
         <aside className="hidden w-60 shrink-0 flex-col border-e bg-muted/40 md:flex">
           <Sidebar />
         </aside>
-        <main className="flex-1 overflow-y-auto">{children}</main>
+        <main id="main-content" className="flex-1 overflow-y-auto">{children}</main>
       </div>
       {/* Task details open from any page via ?task=<id> */}
       <Suspense>
