@@ -12,3 +12,6 @@ docs
 CLAUDE.md
 .freebuff/
 backups/
+
+# Learning docs stay local (git-ignored, per user request)
+**/LEARNING.md
