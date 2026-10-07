@@ -17,6 +17,10 @@ export interface NewProject {
   description?: string | null;
   startDate?: Date | null;
   endDate?: Date | null;
+  /** §6: default billing rate (members without their own override get charged this). */
+  hourlyRate?: number | null;
+  /** §6: approved budget — progress bar in the cost report. */
+  budgetAmount?: number | null;
 }
 
 export type ProjectChanges = Partial<NewProject>;
@@ -42,6 +46,8 @@ export class Project {
       description: input.description?.trim() || null,
       startDate: input.startDate ?? null,
       endDate: input.endDate ?? null,
+      hourlyRate: input.hourlyRate ?? null,
+      budgetAmount: input.budgetAmount ?? null,
       ownerId,
     };
   }
@@ -64,6 +70,12 @@ export class Project {
       if (!patch.name) throw new ValidationError(null, 'Project name is required');
     }
     if (changes.description !== undefined) patch.description = changes.description?.trim() || null;
+    if (changes.hourlyRate !== undefined && changes.hourlyRate !== null && changes.hourlyRate < 0) {
+      throw new ValidationError(null, 'hourlyRate cannot be negative');
+    }
+    if (changes.budgetAmount !== undefined && changes.budgetAmount !== null && changes.budgetAmount < 0) {
+      throw new ValidationError(null, 'budgetAmount cannot be negative');
+    }
     assertDates(
       changes.startDate !== undefined ? changes.startDate : this.props.startDate,
       changes.endDate !== undefined ? changes.endDate : this.props.endDate,

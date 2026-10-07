@@ -1,6 +1,6 @@
 'use client';
 
-import { GanttChartSquare, KanbanSquare, List, Settings } from 'lucide-react';
+import { BarChart3, GanttChartSquare, KanbanSquare, List, Settings } from 'lucide-react';
 import { useLocale, useTranslations } from 'next-intl';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ErrorState } from '@/components/shared/error-state';
@@ -15,6 +15,7 @@ const TABS = [
   { key: 'board', icon: KanbanSquare },
   { key: 'list', icon: List },
   { key: 'timeline', icon: GanttChartSquare },
+  { key: 'reports', icon: BarChart3 },
   { key: 'settings', icon: Settings },
 ] as const;
 

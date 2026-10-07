@@ -36,7 +36,12 @@ export function toProjectDto(view: ProjectView): ProjectDto {
     owner: view.owner,
     myRole: view.role,
     memberCount: view.memberCount,
-    stats: view.stats,
+    stats: {
+      total: view.stats.total,
+      done: view.stats.done,
+      overdue: view.stats.overdue,
+      subtaskProgress: view.stats.subtaskProgress ?? [],
+    },
     createdAt: p.createdAt.toISOString(),
     updatedAt: p.updatedAt.toISOString(),
   };
@@ -49,6 +54,8 @@ export const toMemberDto = (m: MemberView) => ({
   joinedAt: m.joinedAt.toISOString(),
   openTasks: m.openTasks,
   openPoints: m.openPoints,
+  capacityHoursPerWeek: m.capacityHoursPerWeek,
+  openEstimateHours: m.openEstimateHours,
 });
 
 export const toTeammateDto = (t: TeammateView) => ({ ...t });

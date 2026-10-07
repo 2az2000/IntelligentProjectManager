@@ -130,9 +130,19 @@ export class ProjectService {
     actorId: number,
     projectId: number,
     targetId: number,
-    patch: { role?: ProjectRole; skills?: string[] },
+    patch: {
+      role?: ProjectRole;
+      skills?: string[];
+      capacityHoursPerWeek?: number | null;
+      hourlyRate?: number | null;
+    },
   ): Promise<MemberView> {
-    if (patch.role === undefined && patch.skills === undefined) {
+    if (
+      patch.role === undefined &&
+      patch.skills === undefined &&
+      patch.capacityHoursPerWeek === undefined &&
+      patch.hourlyRate === undefined
+    ) {
       throw new ValidationError();
     }
     const actorRole = await this.assertRole(projectId, actorId, 'VIEWER');
@@ -142,8 +152,10 @@ export class ProjectService {
         checkMembershipChange({ actorRole, actorIsTarget: actorId === targetId, targetRole, newRole: patch.role }),
       );
     }
-    if (patch.skills !== undefined && actorId !== targetId && !hasRole(actorRole, 'ADMIN')) {
-      throw new ForbiddenError('INSUFFICIENT_ROLE', 'Only admins can edit someone else’s skills');
+    const adminFields =
+      patch.skills !== undefined || patch.capacityHoursPerWeek !== undefined || patch.hourlyRate !== undefined;
+    if (adminFields && actorId !== targetId && !hasRole(actorRole, 'ADMIN')) {
+      throw new ForbiddenError('INSUFFICIENT_ROLE', 'Only admins can edit someone else’s settings');
     }
     await this.projects.updateMember(projectId, targetId, patch);
     return this.getMember(projectId, targetId);

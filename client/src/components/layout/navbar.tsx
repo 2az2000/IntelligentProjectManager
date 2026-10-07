@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 import { UserMenu } from '@/features/auth';
 import { NotificationBell } from '@/features/notifications';
+import { GlobalSearch } from '@/components/shared/global-search';
 import { Link } from '@/i18n/navigation';
 import { ModeToggle } from './mode-toggle';
 import { Sidebar } from './sidebar';
@@ -35,7 +36,12 @@ export function Navbar() {
           {tc('appTitle')}
         </Link>
 
-        <div className="ms-auto flex items-center gap-1">
+        {/* §4 global search — visible on every app page. */}
+        <div className="ms-auto hidden flex-1 justify-end md:flex">
+          <GlobalSearch />
+        </div>
+
+        <div className="ms-auto flex items-center gap-1 md:ms-2">
           <NotificationBell />
           <ModeToggle />
           <UserMenu />

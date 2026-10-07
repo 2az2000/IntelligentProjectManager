@@ -29,6 +29,25 @@ export const qk = {
     byProject: (projectId: number) => ['schedule', 'project', projectId] as const,
     byTask: (taskId: number) => ['schedule', 'task', taskId] as const,
   },
+  analytics: {
+    all: ['analytics'] as const,
+    forecast: (projectId: number) => ['analytics', 'forecast', projectId] as const,
+    risks: (projectId: number) => ['analytics', 'risks', projectId] as const,
+    burndown: (projectId: number) => ['analytics', 'burndown', projectId] as const,
+  },
+  time: {
+    all: ['time'] as const,
+    openTimer: ['time', 'open-timer'] as const,
+    weekly: ['time', 'weekly'] as const,
+    byTask: (taskId: number) => ['time', 'task', taskId] as const,
+  },
+  cost: {
+    all: ['cost'] as const,
+    byProject: (projectId: number) => ['cost', projectId] as const,
+  },
+  search: (query: string) => ['search', query] as const,
+  holidays: ['holidays'] as const,
+  unassigned: (projectId: number) => ['tasks', 'unassigned', projectId] as const,
   dependencies: {
     all: ['dependencies'] as const,
     byProject: (projectId: number) => ['dependencies', 'project', projectId] as const,

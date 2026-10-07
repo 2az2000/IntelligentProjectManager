@@ -62,7 +62,7 @@ export function ProjectTasks({ projectId, view }: { projectId: number; view: 'bo
       ) : (
         <Card className="py-0">
           <CardContent className="p-0">
-            <TaskTable tasks={visible} onOpen={openTask} />
+            <TaskTable tasks={visible} onOpen={openTask} projectId={canEdit ? projectId : undefined} />
           </CardContent>
         </Card>
       )}

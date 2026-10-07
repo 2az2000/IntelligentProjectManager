@@ -11,6 +11,8 @@ export interface ProjectStats {
   total: number;
   done: number;
   overdue: number;
+  /** §3: parents whose progress is derived from their subtasks (done/total). */
+  subtaskProgress: { taskId: number; done: number; total: number }[];
 }
 
 export interface ProjectView {
@@ -29,6 +31,10 @@ export interface MemberView {
   openPoints: number;
   /** Specialties used by AI assignee suggestions. */
   skills: string[];
+  /** §3: per-member weekly capacity (null = server default) — drives workload & leveling. */
+  capacityHoursPerWeek: number | null;
+  /** §6: open estimate hours summed over this member's unfinished tasks. */
+  openEstimateHours: number;
 }
 
 export interface TeammateView {
@@ -54,7 +60,7 @@ export interface ProjectRepository {
   updateMember(
     projectId: number,
     userId: number,
-    patch: { role?: ProjectRole; skills?: string[] },
+    patch: { role?: ProjectRole; skills?: string[]; capacityHoursPerWeek?: number | null; hourlyRate?: number | null },
   ): Promise<void>;
   removeMember(projectId: number, userId: number): Promise<void>;
   /** Everyone who shares at least one project with the user, with workload across those projects. */

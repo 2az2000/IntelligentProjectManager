@@ -24,7 +24,13 @@ export interface Project {
   owner: UserSummary;
   myRole: ProjectRole;
   memberCount: number;
-  stats: { total: number; done: number; overdue: number };
+  stats: {
+    total: number;
+    done: number;
+    overdue: number;
+    /** §3 per-parent subtask progress (done/total) for parent cards. */
+    subtaskProgress: { taskId: number; done: number; total: number }[];
+  };
   createdAt: string;
   updatedAt: string;
 }
@@ -37,6 +43,10 @@ export interface ProjectMember {
   joinedAt: string;
   openTasks: number;
   openPoints: number;
+  /** §3 weekly capacity in working hours (null = server default). */
+  capacityHoursPerWeek: number | null;
+  /** §6 open estimate hours summed over unfinished tasks. */
+  openEstimateHours: number;
 }
 
 export interface Teammate {
