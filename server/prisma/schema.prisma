@@ -5,6 +5,18 @@ generator client {
   provider = "prisma-client-js"
 }
 
+/// §3: official Iranian holidays — `work-calendar.ts` skips them when rolling dates forward.
+model Holiday {
+  /// Calendar day at 00:00 local time.
+  date        DateTime
+  title       String
+  /// Annual occurrences (e.g. Persian New Year fixed days) vs lunar-shift ones (yearly import).
+  isRecurring Boolean
+
+  @@id([date])
+  @@index([date])
+}
+
 datasource db {
   provider = "postgresql"
 }
@@ -41,17 +53,18 @@ model User {
   /// Phase 5: daily digest + due-date reminder emails (nodemailer in dev logs to console).
   notifyEmail  Boolean @default(true)
 
-  memberships     ProjectMember[]
-  refreshTokens   RefreshToken[]
+  memberships         ProjectMember[]
+  refreshTokens       RefreshToken[]
   passwordResetTokens PasswordResetToken[]
-  ownedProjects   Project[]       @relation("ProjectOwner")
-  authoredTasks   Task[]          @relation("TaskAuthor")
-  assignedTasks   Task[]          @relation("TaskAssignee")
-  comments        Comment[]
-  attachments     Attachment[]    @relation("AttachmentUploader")
-  taskActivities  ActivityLog[]   @relation("ActivityActor")
-  notifications   Notification[]  @relation("NotificationOwner")
-  actedNotifications Notification[] @relation("NotificationActor")
+  ownedProjects       Project[]            @relation("ProjectOwner")
+  authoredTasks       Task[]               @relation("TaskAuthor")
+  assignedTasks       Task[]               @relation("TaskAssignee")
+  comments            Comment[]
+  timeEntries         TimeEntry[]
+  attachments         Attachment[]         @relation("AttachmentUploader")
+  taskActivities      ActivityLog[]        @relation("ActivityActor")
+  notifications       Notification[]       @relation("NotificationOwner")
+  actedNotifications  Notification[]       @relation("NotificationActor")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -97,8 +110,12 @@ model Project {
   ownerId Int
   owner   User @relation("ProjectOwner", fields: [ownerId], references: [id], onDelete: Restrict)
 
-  members ProjectMember[]
-  tasks   Task[]
+  members      ProjectMember[]
+  tasks        Task[]
+  /// §6: billing-rate default for all members without an override (used by cost reports).
+  hourlyRate   Decimal?        @db.Decimal(14, 2)
+  /// §6: total approved budget in currency units — progress bar vs booked cost.
+  budgetAmount Decimal?        @db.Decimal(14, 2)
 
   archivedAt DateTime?
   deletedAt  DateTime?
@@ -109,12 +126,21 @@ model Project {
 }
 
 model ProjectMember {
-  projectId Int
-  userId    Int
-  role      ProjectRole @default(MEMBER)
+  projectId            Int
+  userId               Int
+  role                 ProjectRole @default(MEMBER)
   /// Free-text specialties (e.g. frontend, backend, marketing) — used by AI task enrichment.
-  skills    String[]    @default([])
-  joinedAt  DateTime    @default(now())
+  skills               String[]    @default([])
+  /// §3: per-member weekly capacity in working hours (null = server default) — drives workload & leveling.
+  capacityHoursPerWeek Int?
+  /// §6: personal hourly rate override for project cost reports (null = project default).
+  hourlyRate           Decimal?    @db.Decimal(14, 2)
+  /// §6: per-member budget for project cost reports (null = project fallback).
+  budgetAmount         Decimal?    @db.Decimal(14, 2)
+  /// §6: tracked time entries (start/stop timer + manual entry) — powers cost & burn reports.
+  timeEntries          TimeEntry[]
+
+  joinedAt DateTime @default(now())
 
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
   user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -124,18 +150,18 @@ model ProjectMember {
 }
 
 model Task {
-  id          Int          @id @default(autoincrement())
-  title       String
-  description String?
-  status      TaskStatus   @default(TODO)
-  priority    TaskPriority @default(MEDIUM)
+  id            Int          @id @default(autoincrement())
+  title         String
+  description   String?
+  status        TaskStatus   @default(TODO)
+  priority      TaskPriority @default(MEDIUM)
   /// Ordering inside a status column (fractional indexing — see modules/tasks/domain/position.ts).
-  position    Float        @default(0)
-  tags        String[]     @default([])
-  startDate   DateTime?
-  dueDate     DateTime?
-  completedAt  DateTime?
-  points       Int?
+  position      Float        @default(0)
+  tags          String[]     @default([])
+  startDate     DateTime?
+  dueDate       DateTime?
+  completedAt   DateTime?
+  points        Int?
   /// Effort estimate in working hours — drives CPM durations (see modules/scheduling).
   estimateHours Float?
 
@@ -157,9 +183,10 @@ model Task {
   assigneeId Int?
   assignee   User? @relation("TaskAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
 
-  attachments Attachment[]
-  comments    Comment[]
-  activities  ActivityLog[]
+  attachments   Attachment[]
+  timeEntries   TimeEntry[]
+  comments      Comment[]
+  activities    ActivityLog[]
   notifications Notification[]
 
   deletedAt DateTime?
@@ -177,7 +204,29 @@ enum DependencyType {
   FINISH_TO_START
 }
 
-/// Dependency edge between two top-level tasks of the same project.
+/// §6: actual effort tracked against a task (timer start/stop or manual minutes).
+model TimeEntry {
+  id        Int       @id @default(autoincrement())
+  taskId    Int
+  userId    Int
+  startedAt DateTime
+  endedAt   DateTime?
+  /// Minutes counted so far (open entries keep counting from startedAt).
+  minutes   Int
+  /// True when the user forgot stopwatch mode: filled manually with the real amount.
+  manual    Boolean   @default(false)
+
+  task                   Task           @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  user                   User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  projectMember          ProjectMember? @relation(fields: [projectMemberProjectId, projectMemberUserId], references: [projectId, userId])
+  projectMemberProjectId Int?
+  projectMemberUserId    Int?
+
+  /// The "single open timer" rule: two simultaneous open entries for one user are impossible.
+  @@unique([userId, endedAt])
+  @@index([taskId])
+}
+
 model TaskDependency {
   predecessorId Int
   successorId   Int

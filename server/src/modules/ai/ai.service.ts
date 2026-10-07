@@ -3,7 +3,14 @@ import { env } from '../../config/env';
 import { AppError, NotFoundError } from '../../shared/errors';
 import type { Db } from '../../shared/db/prisma';
 import type { ProjectRole } from '../projects';
-import type { AiAssigneeSuggestion, EnrichedTask, ProjectDocResult } from './ai.types';
+import type {
+  AiAssigneeSuggestion,
+  EnrichedTask,
+  EstimateSuggestion,
+  ProjectDocResult,
+  StandupResult,
+  ThreadSummaryResult,
+} from './ai.types';
 
 /** What the AI module needs from the projects module (same contract tasks uses). */
 export interface ProjectAccess {
@@ -63,6 +70,16 @@ const rawEnrichSchema = z.object({
   estimateHours: z.number().positive().max(1000).nullish(),
 });
 
+const rawEstimateSchema = z.object({
+  estimateHours: z.number().positive().max(1000).nullish(),
+  points: z.number().int().min(0).max(200).nullish(),
+  rationale: z.string().max(600).optional(),
+});
+
+const rawTagsSchema = z.object({
+  tags: z.array(z.string().min(1).max(40)).max(6).optional(),
+});
+
 /** Strips markdown fences and extracts the first JSON object from an LLM answer. */
 function extractJson(content: string): unknown {
   const unfenced = content.replace(/```(?:json)?/gi, '');
@@ -120,6 +137,189 @@ export class AiService {
       ],
     });
     return { markdown: markdown.trim(), model: env.AI_MODEL };
+  }
+
+  /**
+   * §2 smart estimate: few-shot from this team's own closed tasks (title+description →
+   * actual hours), so the number is anchored to real experience. `basedOn` tells the
+   * UI how honest to be ("based on 3 similar tasks").
+   */
+  async suggestEstimate(
+    userId: number,
+    projectId: number,
+    input: { title: string; description?: string },
+  ): Promise<EstimateSuggestion> {
+    await this.access.assertRole(projectId, userId, 'MEMBER');
+    const [closed, requester] = await Promise.all([
+      this.db.task.findMany({
+        where: {
+          projectId,
+          deletedAt: null,
+          status: 'DONE',
+          estimateHours: { not: null },
+        },
+        select: { title: true, description: true, estimateHours: true, points: true },
+        orderBy: { completedAt: 'desc' },
+        take: 10,
+      }),
+      this.db.user.findUnique({ where: { id: userId }, select: { locale: true } }),
+    ]);
+
+    const content = await this.chat({
+      json: true,
+      messages: [
+        { role: 'system', content: ESTIMATE_SYSTEM_PROMPT },
+        {
+          role: 'user',
+          content: renderEstimate(
+            closed.map((t) => ({
+              title: t.title,
+              description: t.description ?? '',
+              estimateHours: t.estimateHours ?? 0,
+              points: t.points,
+            })),
+            input,
+            languageOf(requester?.locale),
+          ),
+        },
+      ],
+    });
+
+    let raw: unknown;
+    try {
+      raw = extractJson(content);
+    } catch {
+      throw new AppError(502, 'AI_BAD_RESPONSE', 'The AI did not return valid JSON');
+    }
+    const parsed = rawEstimateSchema.safeParse(raw);
+    if (!parsed.success) throw new AppError(502, 'AI_BAD_RESPONSE', 'The AI returned an unexpected shape');
+    return {
+      estimateHours: parsed.data.estimateHours ?? null,
+      points: parsed.data.points ?? null,
+      basedOn: closed.length,
+      rationale: (parsed.data.rationale ?? '').trim(),
+    };
+  }
+
+  /** §2 stand-up assistant: yesterday/today/blockers from the user's own activity. */
+  async standup(userId: number, projectId: number, date?: Date): Promise<StandupResult> {
+    await this.access.assertRole(projectId, userId, 'VIEWER');
+    const day = date ?? new Date();
+    const dayStart = new Date(day.getFullYear(), day.getMonth(), day.getDate() - 1);
+    const dayEnd = new Date(dayStart.getTime() + 2 * 24 * 60 * 60 * 1000);
+
+    const [events, openTasks, requester] = await Promise.all([
+      this.db.activityLog.findMany({
+        where: { actorId: userId, task: { projectId }, createdAt: { gte: dayStart, lt: dayEnd } },
+        select: { action: true, field: true, oldValue: true, newValue: true, createdAt: true, task: { select: { title: true } } },
+        orderBy: { createdAt: 'desc' },
+        take: 40,
+      }),
+      this.db.task.findMany({
+        where: { projectId, deletedAt: null, assigneeId: userId, status: { not: 'DONE' } },
+        select: { title: true, dueDate: true, status: true },
+        orderBy: { dueDate: 'asc' },
+        take: 15,
+      }),
+      this.db.user.findUnique({ where: { id: userId }, select: { locale: true } }),
+    ]);
+
+    const markdown = await this.chat({
+      json: false,
+      messages: [
+        { role: 'system', content: STANDUP_SYSTEM_PROMPT },
+        {
+          role: 'user',
+          content: renderStandup(
+            events.map((e) => ({
+              action: e.action,
+              field: e.field,
+              newValue: e.newValue,
+              taskTitle: e.task.title,
+            })),
+            openTasks.map((t) => ({ title: t.title, status: t.status, dueDate: t.dueDate?.toISOString().slice(0, 10) ?? null })),
+            languageOf(requester?.locale),
+          ),
+        },
+      ],
+    });
+    return { markdown: markdown.trim(), model: env.AI_MODEL };
+  }
+
+  /** §2 long-thread summary — input is the comment array, output Markdown. */
+  async summarizeThread(
+    userId: number,
+    taskId: number,
+  ): Promise<ThreadSummaryResult> {
+    const task = await this.db.task.findFirst({
+      where: { id: taskId, deletedAt: null, project: { deletedAt: null } },
+      select: { projectId: true, title: true },
+    });
+    if (!task) throw new NotFoundError('TASK_NOT_FOUND', 'Task not found');
+    await this.access.assertRole(task.projectId, userId, 'VIEWER');
+
+    const comments = await this.db.comment.findMany({
+      where: { taskId, deletedAt: null },
+      select: { body: true, author: { select: { name: true } }, createdAt: true },
+      orderBy: { createdAt: 'asc' },
+      take: 100,
+    });
+    if (comments.length < 2) {
+      throw new AppError(400, 'THREAD_TOO_SHORT', 'Not enough comments to summarize');
+    }
+    const requester = await this.db.user.findUnique({ where: { id: userId }, select: { locale: true } });
+    const markdown = await this.chat({
+      json: false,
+      messages: [
+        { role: 'system', content: THREAD_SUMMARY_SYSTEM_PROMPT },
+        {
+          role: 'user',
+          content: renderThreadSummary(
+            task.title,
+            comments.map((c) => ({ author: c.author.name, body: c.body.slice(0, 500) })),
+            languageOf(requester?.locale),
+          ),
+        },
+      ],
+    });
+    return { markdown: markdown.trim(), model: env.AI_MODEL };
+  }
+
+  /** §2 auto-tagging: propose tags from the project's existing tag vocabulary only. */
+  async suggestTags(userId: number, projectId: number, input: { title: string; description?: string }): Promise<{ tags: string[] }> {
+    await this.access.assertRole(projectId, userId, 'MEMBER');
+    const requester = await this.db.user.findUnique({ where: { id: userId }, select: { locale: true } });
+    const rows = await this.db.task.findMany({
+      where: { projectId, deletedAt: null },
+      select: { tags: true },
+      take: 200,
+    });
+    const tagPool = [...new Set(rows.flatMap((r) => r.tags))].slice(0, 60);
+    if (tagPool.length === 0) return { tags: [] };
+
+    const content = await this.chat({
+      json: true,
+      messages: [
+        { role: 'system', content: TAGS_SYSTEM_PROMPT },
+        {
+          role: 'user',
+          content: renderTags(tagPool, input, languageOf(requester?.locale)),
+        },
+      ],
+    });
+    let raw: unknown;
+    try {
+      raw = extractJson(content);
+    } catch {
+      throw new AppError(502, 'AI_BAD_RESPONSE', 'The AI did not return valid JSON');
+    }
+    const parsed = rawTagsSchema.safeParse(raw);
+    if (!parsed.success) throw new AppError(502, 'AI_BAD_RESPONSE', 'The AI returned an unexpected shape');
+    const allowed = new Set(tagPool);
+    const tags = [...new Set((parsed.data.tags ?? []).map((t) => t.trim()).filter(Boolean))]
+      .filter((t) => allowed.has(t))
+      .slice(0, 5);
+    return { tags };
   }
 
   // ---- LLM plumbing -----------------------------------------------------------------------
@@ -286,6 +486,34 @@ const DOC_SYSTEM_PROMPT = [
   'Return Markdown only, starting with a top-level title.',
 ].join('\n');
 
+const ESTIMATE_SYSTEM_PROMPT = [
+  'You are a senior estimator inside a project management API.',
+  'Given a new task and a list of this team\'s recently completed tasks with their actual effort,',
+  'respond with JSON: {"estimateHours": number|null, "points": number|null, "rationale": string}.',
+  'Anchor the estimate on the similar completed tasks (title/description similarity) — extrapolate',
+  'from real history, not generic guesses. If history is thin, say so in the rationale.',
+  'Respond with JSON only.',
+].join('\n');
+
+const STANDUP_SYSTEM_PROMPT = [
+  'You are a stand-up assistant. Produce a short Markdown stand-up report with exactly three',
+  'sections as H3 headings: "Yesterday", "Today", "Blockers". Yesterday = what the user did',
+  '(from activity). Today = what they should pick up next (from their open tasks, nearest due first).',
+  'Blockers = anything visible in the data (overdue, stuck in one status) or "none visible".',
+  'Never invent activity. Return Markdown only.',
+].join('\n');
+
+const THREAD_SUMMARY_SYSTEM_PROMPT = [
+  'You summarize long task comment threads. Produce a short Markdown summary with the key',
+  'decisions, open questions and action items as bullet lists. Attribute claims to authors.',
+  'Never invent content. Return Markdown only.',
+].join('\n');
+
+const TAGS_SYSTEM_PROMPT = [
+  'You suggest task tags. You are given the project\'s existing tag vocabulary — pick 0-5 tags',
+  'from THAT list that fit the task. Never invent new tags. Respond with JSON: {"tags": string[]}.',
+].join('\n');
+
 function renderMembers(
   members: { userId?: number; role: string; skills: string[]; user: { name: string }; openTasks?: number }[],
 ): string {
@@ -319,6 +547,79 @@ function renderEnrichTask(
   ]
     .filter((line) => line !== undefined)
     .join('\n');
+}
+
+function renderEstimate(
+  history: { title: string; description: string; estimateHours: number; points: number | null }[],
+  input: { title: string; description?: string },
+  language: string,
+): string {
+  return [
+    `# Team's recently completed tasks (the calibration set)`,
+    history.length > 0
+      ? history
+          .map((h) => `- "${h.title}" — estimate ${h.estimateHours}h${h.points ? `, ${h.points} points` : ''}${h.description ? `: ${h.description.slice(0, 150)}` : ''}`)
+          .join('\n')
+      : '(none — the estimate will be generic; say so in the rationale)',
+    '',
+    `# Task to estimate`,
+    `Title: ${input.title}`,
+    input.description ? `Description: ${input.description}` : '',
+    '',
+    `Write the rationale in ${language}.`,
+  ].join('\n');
+}
+
+function renderStandup(
+  events: { action: string; field: string | null; newValue: string | null; taskTitle: string }[],
+  openTasks: { title: string; status: string; dueDate: string | null }[],
+  language: string,
+): string {
+  return [
+    `# My activity since yesterday (most recent first)`,
+    events.length > 0
+      ? events.map((e) => `- [${e.action}${e.field ? `:${e.field}` : ''}] ${e.taskTitle}${e.newValue ? ` → ${e.newValue}` : ''}`).join('\n')
+      : '(no recorded activity yesterday)',
+    '',
+    `# My open tasks (nearest due first)`,
+    openTasks.length > 0
+      ? openTasks.map((t) => `- [${t.status}] ${t.title}${t.dueDate ? ` (due ${t.dueDate})` : ''}`).join('\n')
+      : '(none assigned)',
+    '',
+    `Write the stand-up in ${language}.`,
+  ].join('\n');
+}
+
+function renderThreadSummary(
+  taskTitle: string,
+  comments: { author: string; body: string }[],
+  language: string,
+): string {
+  return [
+    `# Task: ${taskTitle}`,
+    '',
+    `# Comment thread (${comments.length} comments, chronological)`,
+    comments.map((c) => `- ${c.author}: ${c.body.replace(/\n/g, ' ')}`).join('\n'),
+    '',
+    `Write the summary in ${language}.`,
+  ].join('\n');
+}
+
+function renderTags(
+  tagPool: string[],
+  input: { title: string; description?: string },
+  language: string,
+): string {
+  return [
+    `# Existing tag vocabulary (the ONLY allowed tags)`,
+    tagPool.join(', ') || '(none)',
+    '',
+    `# Task`,
+    `Title: ${input.title}`,
+    input.description ? `Description: ${input.description.slice(0, 400)}` : '',
+    '',
+    `(Tag strings may be written in ${language} where the vocabulary itself is in that language.)`,
+  ].join('\n');
 }
 
 function renderProjectDoc(
