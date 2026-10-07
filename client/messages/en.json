@@ -85,6 +85,7 @@
       "board": "Board",
       "list": "List",
       "timeline": "Timeline",
+      "reports": "Reports",
       "settings": "Settings"
     },
     "roles": {
@@ -174,7 +175,9 @@
       "HIGH": "High",
       "URGENT": "Urgent",
       "overdue": "Overdue"
-    }
+    },
+    "markDone": "Mark done",
+    "unassign": "Unassign"
   },
   "MyTasks": {
     "title": "My Tasks",
@@ -256,7 +259,9 @@
     "heatLegend": "Workload relative to the busiest member:",
     "loadLow": "Low",
     "loadMedium": "Medium",
-    "loadHigh": "High"
+    "loadHigh": "High",
+    "capacity": "Weekly capacity (hours)",
+    "capacityTitle": "Per-member capacity — empty = server default"
   },
   "Comments": {
     "title": "Comments",
@@ -441,5 +446,83 @@
     "title": "Page not found",
     "description": "The page you're looking for doesn't exist or has been moved.",
     "home": "Back to dashboard"
+  },
+  "Reports": {
+    "title": "Analytics reports",
+    "subtitle": "Monte Carlo forecast, risks and burndown — straight from the CPM engine",
+    "tabs": {
+      "forecast": "Forecast",
+      "risks": "Risks",
+      "burndown": "Burndown",
+      "cost": "Cost"
+    },
+    "forecast": {
+      "runs": "simulations",
+      "p50": "Median (P50)",
+      "p85": "Optimistic (P85)",
+      "p95": "Conservative (P95)",
+      "deadlineProb": "Chance of hitting the deadline",
+      "noDeadline": "No project deadline set",
+      "criticality": "Criticality",
+      "explain": "Estimates vary ×0.75–×1.5; the percentage is the chance of finishing by that date."
+    },
+    "risks": {
+      "empty": "No active risks — nice!",
+      "score": "score",
+      "reasons": {
+        "overdue": "Overdue",
+        "due-soon": "Due soon",
+        "no-due-date": "No due date",
+        "unestimated": "Unestimated",
+        "critical": "Critical path",
+        "slack-pressured": "Negative slack",
+        "stale": "Stale",
+        "assignee-overloaded": "Assignee overloaded"
+      }
+    },
+    "burndown": {
+      "remaining": "Remaining",
+      "ideal": "Ideal line",
+      "total": "Total tasks"
+    },
+    "cost": {
+      "booked": "Booked cost",
+      "budget": "Budget",
+      "tracked": "Tracked time",
+      "unpriced": "Without a rate",
+      "perMember": "Per member",
+      "noRate": "No hourly rate configured",
+      "rate": "Hourly rate"
+    },
+    "unassigned": {
+      "title": "Unassigned tasks",
+      "empty": "Every task has an owner"
+    },
+    "exportCsv": "Export CSV"
+  },
+  "Time": {
+    "start": "Start timer",
+    "stop": "Stop timer",
+    "running": "Timer running",
+    "manual": "Manual entry",
+    "manualMinutes": "minutes",
+    "saved": "Time logged",
+    "entries": "Time entries"
+  },
+  "Ai": {
+    "estimate": "AI estimate",
+    "estimateBasedOn": "based on {count} similar tasks",
+    "summarize": "Summarize thread",
+    "standup": "My stand-up",
+    "loading": "Thinking…",
+    "failed": "The AI request failed"
+  },
+  "Search": {
+    "placeholder": "Search everything…",
+    "tasks": "Tasks",
+    "projects": "Projects",
+    "comments": "Comments",
+    "empty": "Nothing found",
+    "hint": "Type at least 2 characters"
   }
 }

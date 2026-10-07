@@ -71,7 +71,7 @@ export class PrismaProjectRepository implements ProjectRepository {
       role: m.role,
       owner: m.project.owner,
       memberCount: m.project._count.members,
-      stats: stats.get(m.projectId) ?? { total: 0, done: 0, overdue: 0 },
+      stats: stats.get(m.projectId) ?? { total: 0, done: 0, overdue: 0, subtaskProgress: [] },
     }));
   }
 
@@ -102,7 +102,7 @@ export class PrismaProjectRepository implements ProjectRepository {
         by: ['assigneeId'],
         where: openTaskWhere([projectId]),
         _count: { _all: true },
-        _sum: { points: true },
+        _sum: { points: true, estimateHours: true },
       }),
     ]);
     const byUser = new Map(workload.map((w) => [w.assigneeId, w]));
@@ -111,6 +111,8 @@ export class PrismaProjectRepository implements ProjectRepository {
       role: m.role,
       skills: m.skills,
       joinedAt: m.joinedAt,
+      capacityHoursPerWeek: m.capacityHoursPerWeek,
+      openEstimateHours: byUser.get(m.userId)?._sum.estimateHours ?? 0,
       openTasks: byUser.get(m.userId)?._count._all ?? 0,
       openPoints: byUser.get(m.userId)?._sum.points ?? 0,
     }));
@@ -123,7 +125,7 @@ export class PrismaProjectRepository implements ProjectRepository {
   async updateMember(
     projectId: number,
     userId: number,
-    patch: { role?: ProjectRole; skills?: string[] },
+    patch: { role?: ProjectRole; skills?: string[]; capacityHoursPerWeek?: number | null; hourlyRate?: number | null },
   ): Promise<void> {
     await this.db.projectMember.update({
       where: { projectId_userId: { projectId, userId } },
@@ -191,7 +193,7 @@ export class PrismaProjectRepository implements ProjectRepository {
     const result = new Map<number, ProjectStats>();
     const get = (id: number) => {
       let s = result.get(id);
-      if (!s) result.set(id, (s = { total: 0, done: 0, overdue: 0 }));
+      if (!s) result.set(id, (s = { total: 0, done: 0, overdue: 0, subtaskProgress: [] }));
       return s;
     };
     for (const row of byStatus) {
@@ -200,6 +202,24 @@ export class PrismaProjectRepository implements ProjectRepository {
       if (row.status === 'DONE') s.done += row._count._all;
     }
     for (const row of overdue) get(row.projectId).overdue = row._count._all;
+
+    // §3 subtask-derived progress for parent cards (done/total per parent).
+    const subtaskGroups = await this.db.task.groupBy({
+      by: ['parentId', 'status'],
+      where: { projectId: { in: projectIds }, deletedAt: null, parentId: { not: null } },
+      _count: { _all: true },
+    });
+    const progress = new Map<number, { done: number; total: number }>();
+    for (const row of subtaskGroups) {
+      if (row.parentId === null) continue;
+      const entry = progress.get(row.parentId) ?? { done: 0, total: 0 };
+      entry.total += row._count._all;
+      if (row.status === 'DONE') entry.done += row._count._all;
+      progress.set(row.parentId, entry);
+    }
+    for (const [projectId, s] of result) {
+      s.subtaskProgress = [...progress.entries()].map(([taskId, p]) => ({ taskId, ...p }));
+    }
     return result;
   }
 }

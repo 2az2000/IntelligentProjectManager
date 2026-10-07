@@ -5,6 +5,7 @@ import type { ProjectDoc, TaskEnrichment } from '@/features/ai/types';
 import type { Notification } from '@/features/notifications/types';
 import type { Project, ProjectMember, Teammate } from '@/features/projects/types';
 import type { ScheduleResult } from '@/features/scheduling/types';
+import type { BurndownResult, ForecastResult, RiskResult } from '@/features/scheduling/analytics-types';
 import type { Task } from '@/features/tasks/types';
 
 export const API = 'http://localhost:8000';
@@ -26,7 +27,7 @@ export const project: Project = {
   myRole: 'OWNER',
   owner: admin,
   memberCount: 2,
-  stats: { total: 3, done: 1, overdue: 0 },
+  stats: { total: 3, done: 1, overdue: 0, subtaskProgress: [] },
   createdAt: now,
   updatedAt: now,
 };
@@ -38,6 +39,8 @@ export const projectMember: ProjectMember = {
   joinedAt: now,
   openTasks: 1,
   openPoints: 5,
+  capacityHoursPerWeek: 35,
+  openEstimateHours: 24,
 };
 
 export const teammate: Teammate = {
@@ -291,6 +294,103 @@ export const handlers = [
       locale: 'fa',
       theme: null,
       notifyEmail: false,
+    }),
+  ),
+
+  // ---- §3 analytics: forecast / risks / burndown ----------------------------------------
+  http.get(`${API}/projects/1/forecast`, () =>
+    HttpResponse.json({
+      runs: 2000,
+      p50Hours: 30,
+      p85Hours: 36,
+      p95Hours: 42,
+      p50Date: '2026-10-08T00:00:00.000Z',
+      p85Date: '2026-10-10T00:00:00.000Z',
+      p95Date: '2026-10-12T00:00:00.000Z',
+      deadlineProbability: 0.72,
+      tasks: [{ taskId: 1, criticality: 0.98 }],
+    } satisfies ForecastResult),
+  ),
+  http.get(`${API}/projects/1/risks`, () =>
+    HttpResponse.json({
+      generatedAt: now,
+      tasks: [
+        {
+          taskId: 1,
+          score: 58,
+          reasons: ['critical', 'due-soon'],
+          title: 'Design hero section',
+          status: 'IN_PROGRESS',
+        },
+        { taskId: 2, score: 0, reasons: [], title: 'Set up CI', status: 'DONE' },
+      ],
+    } satisfies RiskResult),
+  ),
+  http.get(`${API}/projects/1/burndown`, () =>
+    HttpResponse.json({
+      from: '2026-09-01T00:00:00.000Z',
+      to: '2026-09-30T00:00:00.000Z',
+      total: 3,
+      points: [
+        { date: '2026-09-01T00:00:00.000Z', remaining: 3, ideal: 3 },
+        { date: '2026-09-15T00:00:00.000Z', remaining: 2, ideal: 1.5 },
+        { date: '2026-09-30T00:00:00.000Z', remaining: 1, ideal: 0 },
+      ],
+    } satisfies BurndownResult),
+  ),
+  http.get(`${API}/holidays`, () =>
+    HttpResponse.json([
+      { date: '2027-03-21T00:00:00.000Z', title: 'نوروز', isRecurring: true },
+    ]),
+  ),
+
+  // ---- §6 time tracking + cost -----------------------------------------------------------
+  http.get(`${API}/me/timer`, () => HttpResponse.json(null)),
+  http.post(`${API}/tasks/1/time/start`, () =>
+    HttpResponse.json(
+      { id: 77, taskId: 1, userId: 1, startedAt: now, endedAt: null, minutes: 0, manual: false },
+      { status: 201 },
+    ),
+  ),
+  http.post(`${API}/tasks/1/time/stop`, () =>
+    HttpResponse.json({ id: 77, taskId: 1, userId: 1, startedAt: now, endedAt: now, minutes: 45, manual: false }),
+  ),
+  http.post(`${API}/tasks/1/time/manual`, () =>
+    HttpResponse.json(
+      { id: 78, taskId: 1, userId: 1, startedAt: now, endedAt: now, minutes: 30, manual: true },
+      { status: 201 },
+    ),
+  ),
+  http.get(`${API}/tasks/1/time`, () =>
+    HttpResponse.json([
+      { id: 77, taskId: 1, userId: 1, startedAt: now, endedAt: now, minutes: 45, manual: false },
+    ]),
+  ),
+  http.get(`${API}/me/time-summary`, () =>
+    HttpResponse.json({
+      weekStart: '2026-09-28T00:00:00.000Z',
+      totalMinutes: 195,
+      perDay: [{ date: '2026-09-30', minutes: 45 }],
+      perTask: [{ taskId: 1, taskTitle: 'Design hero section', minutes: 45 }],
+    }),
+  ),
+  http.get(`${API}/projects/1/cost`, () =>
+    HttpResponse.json({
+      bookedCost: 1170,
+      trackedMinutes: 1170,
+      unpricedMinutes: 0,
+      budget: 5000,
+      hourlyRate: 60,
+      perMember: [{ userId: 1, name: admin.name, minutes: 1170, hourlyRate: 60, cost: 1170 }],
+    }),
+  ),
+  http.get(`${API}/projects/1/tasks/unassigned`, () => HttpResponse.json([])),
+  http.post(`${API}/projects/1/tasks/bulk`, () => HttpResponse.json({ updated: 2, skipped: [] })),
+  http.get(`${API}/search`, () =>
+    HttpResponse.json({
+      tasks: [{ id: 1, projectId: 1, projectTitle: project.name, title: 'Design hero section', status: 'TODO' }],
+      projects: [{ id: 1, title: project.name }],
+      comments: [],
     }),
   ),
 ];

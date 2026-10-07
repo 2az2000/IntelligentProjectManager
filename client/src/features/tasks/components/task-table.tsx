@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react';
 import { ArrowUpDown } from 'lucide-react';
 import { useLocale, useTranslations } from 'next-intl';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
   Table,
   TableBody,
@@ -12,6 +13,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { UserAvatar } from '@/components/shared/user-avatar';
+import { useBulkUpdate } from '../hooks/use-bulk';
 import { formatNumber } from '@/lib/format';
 import { TASK_PRIORITIES, TASK_STATUSES, type Task } from '../types';
 import { DueDate, PriorityBadge, StatusBadge } from './task-badges';
@@ -32,14 +34,27 @@ export function TaskTable({
   tasks,
   onOpen,
   showProject = false,
+  projectId,
 }: {
   tasks: Task[];
   onOpen: (taskId: number) => void;
   showProject?: boolean;
+  /** When given, §4 bulk-selection checkboxes appear (project-scoped tables only). */
+  projectId?: number;
 }) {
   const t = useTranslations('Tasks');
   const locale = useLocale();
   const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 }>({ key: 'status', dir: 1 });
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+  const bulk = useBulkUpdate(projectId ?? 0);
+
+  const toggle = (id: number, checked: boolean) =>
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (checked) next.add(id);
+      else next.delete(id);
+      return next;
+    });
 
   const rows = useMemo(
     () => [...tasks].sort((a, b) => compare[sort.key](a, b) * sort.dir || a.position - b.position),
@@ -60,9 +75,40 @@ export function TaskTable({
   );
 
   return (
+    <div>
+    {projectId && selected.size > 0 && (
+      <div className="bg-muted/60 mb-2 flex flex-wrap items-center gap-2 rounded-md border px-3 py-2">
+        <span className="text-sm">{formatNumber(selected.size, locale)} ✓</span>
+        <button
+          type="button"
+          className="hover:bg-accent rounded border px-2 py-1 text-xs"
+          onClick={() =>
+            bulk.mutate(
+              { ids: [...selected], patch: { status: 'DONE' } },
+              { onSuccess: () => setSelected(new Set()) },
+            )
+          }
+        >
+          {t('markDone')}
+        </button>
+        <button
+          type="button"
+          className="hover:bg-accent rounded border px-2 py-1 text-xs"
+          onClick={() =>
+            bulk.mutate(
+              { ids: [...selected], patch: { assigneeId: null } },
+              { onSuccess: () => setSelected(new Set()) },
+            )
+          }
+        >
+          {t('unassign')}
+        </button>
+      </div>
+    )}
     <Table>
       <TableHeader>
         <TableRow>
+          {projectId && <TableHead className="w-8" aria-label="select" />}
           {header('title', t('titleLabel'))}
           {showProject && <TableHead className="text-start">{t('projectLabel')}</TableHead>}
           {header('status', t('statusLabel'))}
@@ -81,6 +127,15 @@ export function TaskTable({
             onClick={() => onOpen(task.id)}
             onKeyDown={(e) => e.key === 'Enter' && onOpen(task.id)}
           >
+            {projectId && (
+              <TableCell onClick={(e) => e.stopPropagation()}>
+                <Checkbox
+                  aria-label={task.title}
+                  checked={selected.has(task.id)}
+                  onCheckedChange={(checked) => toggle(task.id, checked === true)}
+                />
+              </TableCell>
+            )}
             <TableCell className="max-w-72 truncate font-medium">{task.title}</TableCell>
             {showProject && <TableCell className="text-muted-foreground">{task.project.name}</TableCell>}
             <TableCell>
@@ -105,5 +160,6 @@ export function TaskTable({
         ))}
       </TableBody>
     </Table>
+    </div>
   );
 }

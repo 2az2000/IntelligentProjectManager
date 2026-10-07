@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { Loader2, Plus, Trash2 } from 'lucide-react';
+import { Loader2, Plus, Sparkles, Trash2 } from 'lucide-react';
 import { useLocale, useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -25,6 +25,7 @@ import { ErrorState } from '@/components/shared/error-state';
 import { useCurrentUser } from '@/features/auth';
 import { ActivityTimeline } from '@/features/activity';
 import { AttachmentsSection } from '@/features/attachments';
+import { useAiEstimate } from '@/features/ai';
 import { hasRole, useProject, useProjectMembers } from '@/features/projects';
 import { DependenciesSection } from '@/features/scheduling';
 import { useErrorMessage } from '@/hooks/use-error-message';
@@ -37,6 +38,7 @@ import { useTaskSheet } from '../hooks/use-task-sheet';
 import { parseTags } from '../schemas/task.schema';
 import type { TaskDetail } from '../types';
 import { TaskComments } from './task-comments';
+import { TimeTracker } from './time-tracker';
 import { AssigneeSelect, PrioritySelect, StatusSelect } from './task-fields';
 
 /** Global task detail panel, opened by `?task=<id>` on any page of the app. */
@@ -170,20 +172,23 @@ function TaskDetailBody({ task }: { task: TaskDetail }) {
           />
         </Field>
         <Field label={t('estimateHoursLabel')} id="task-estimate">
-          <Input
-            id="task-estimate"
-            type="number"
-            min={0}
-            max={10000}
-            step="0.5"
-            value={estimateHours}
-            disabled={!canEdit}
-            onChange={(e) => setEstimateHours(e.target.value)}
-            onBlur={() => {
-              const next = estimateHours === '' ? null : Math.max(0, Math.min(10000, Number(estimateHours)));
-              if (next !== task.estimateHours && (next === null || Number.isFinite(next))) save({ estimateHours: next });
-            }}
-          />
+          <div className="flex items-center gap-1">
+            <Input
+              id="task-estimate"
+              type="number"
+              min={0}
+              max={10000}
+              step="0.5"
+              value={estimateHours}
+              disabled={!canEdit}
+              onChange={(e) => setEstimateHours(e.target.value)}
+              onBlur={() => {
+                const next = estimateHours === '' ? null : Math.max(0, Math.min(10000, Number(estimateHours)));
+                if (next !== task.estimateHours && (next === null || Number.isFinite(next))) save({ estimateHours: next });
+              }}
+            />
+            {canEdit && task.parentId === null && <AiEstimateButton projectId={task.projectId} title={task.title} onApply={(hours) => { setEstimateHours(String(hours)); save({ estimateHours: hours }); }} />}
+          </div>
         </Field>
         <Field label={t('tagsLabel')} id="task-tags">
           <Input
@@ -213,6 +218,9 @@ function TaskDetailBody({ task }: { task: TaskDetail }) {
           }}
         />
       </Field>
+
+      {/* §6 time tracking — stopwatch + manual entries (VIEWER+ can read). */}
+      <TimeTracker taskId={task.id} />
 
       {task.parentId === null && (
         <>
@@ -349,5 +357,52 @@ function Field({ label, id, children }: { label: string; id: string; children: R
       </Label>
       {children}
     </div>
+  );
+}
+
+/** §2 smart-estimate button — fills the empty estimate field with the AI suggestion. */
+function AiEstimateButton({
+  projectId,
+  title,
+  onApply,
+}: {
+  projectId: number;
+  title: string;
+  onApply: (hours: number) => void;
+}) {
+  const t = useTranslations('Ai');
+  const toMessage = useErrorMessage();
+  const estimate = useAiEstimate(projectId);
+
+  const run = () =>
+    estimate.mutate(
+      { title },
+      {
+        onSuccess: (suggestion) => {
+          if (suggestion.estimateHours !== null) onApply(suggestion.estimateHours);
+          toast.success(
+            suggestion.basedOn > 0
+              ? t('estimateBasedOn', { count: suggestion.basedOn })
+              : (suggestion.rationale || t('estimate')),
+            { duration: 6000 },
+          );
+        },
+        onError: (error) => toast.error(toMessage(error)),
+      },
+    );
+
+  return (
+    <Button
+      type="button"
+      variant="outline"
+      size="sm"
+      className="h-9 shrink-0"
+      disabled={estimate.isPending}
+      onClick={run}
+      title={t('estimate')}
+    >
+      {estimate.isPending ? <Loader2 aria-hidden className="size-4 animate-spin" /> : <Sparkles aria-hidden className="size-4" />}
+      {t('estimate')}
+    </Button>
   );
 }

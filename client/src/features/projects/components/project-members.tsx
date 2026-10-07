@@ -89,6 +89,15 @@ export function ProjectMembers({ project }: { project: Project }) {
                   <span className="text-xs text-muted-foreground">
                     {t('openWork', { tasks: formatNumber(m.openTasks, locale), points: formatNumber(m.openPoints, locale) })}
                   </span>
+                  {/* §3 per-member weekly capacity — drives the workload heatmap & leveling. */}
+                  {(editable || self) && (
+                    <CapacityEditor
+                      projectId={project.id}
+                      userId={m.user.id}
+                      value={m.capacityHoursPerWeek}
+                      openHours={m.openEstimateHours}
+                    />
+                  )}
                   {editable ? (
                     <Select
                       value={m.role}
@@ -196,6 +205,60 @@ function SkillsEditor({ projectId, userId, skills }: { projectId: number; userId
         >
           <Check className="size-3.5" />
         </Button>
+      )}
+    </div>
+  );
+}
+
+/** §3 per-member weekly capacity (hours/week) — empty = server default. */
+function CapacityEditor({
+  projectId,
+  userId,
+  value,
+  openHours,
+}: {
+  projectId: number;
+  userId: number;
+  value: number | null;
+  openHours: number;
+}) {
+  const t = useTranslations('Members');
+  const toMessage = useErrorMessage();
+  const updateMember = useUpdateMember(projectId);
+  const [input, setInput] = useState(value === null ? '' : String(value));
+
+  const save = () => {
+    const next = input.trim() === '' ? null : Math.max(1, Math.min(80, Math.round(Number(input))));
+    if (Number.isNaN(next as number)) return;
+    updateMember.mutate(
+      { userId, patch: { capacityHoursPerWeek: next } },
+      { onError: (error) => toast.error(toMessage(error)) },
+    );
+  };
+
+  const load = value !== null && value > 0 ? Math.round((openHours / value) * 100) : null;
+  return (
+    <div className="flex items-center gap-1" title={t('capacityTitle')}>
+      <Input
+        value={input}
+        onChange={(e) => setInput(e.target.value)}
+        onBlur={save}
+        onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
+        placeholder='35'
+        aria-label={t('capacity')}
+        type='number'
+        min={1}
+        max={80}
+        className='h-8 w-20 text-xs'
+        disabled={updateMember.isPending}
+      />
+      {load !== null && (
+        <span
+          className={`text-[11px] ${load > 110 ? 'text-rose-600' : load > 85 ? 'text-amber-600' : 'text-emerald-600'}`}
+          dir='ltr'
+        >
+          {load}%
+        </span>
       )}
     </div>
   );

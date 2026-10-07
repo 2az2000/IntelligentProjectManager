@@ -1,13 +1,14 @@
 'use client';
 
 import { useState } from 'react';
-import { Loader2, Pencil, Send, Trash2 } from 'lucide-react';
+import { Loader2, MessageSquareText, Pencil, Send, Trash2 } from 'lucide-react';
 import { useLocale, useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { UserAvatar } from '@/components/shared/user-avatar';
 import { useCurrentUser } from '@/features/auth';
+import { useSummarizeThread } from '@/features/ai';
 import { useErrorMessage } from '@/hooks/use-error-message';
 import { formatRelative } from '@/lib/format';
 import { useAddComment, useComments, useDeleteComment, useEditComment } from '../hooks/use-tasks';
@@ -23,8 +24,16 @@ export function TaskComments({ taskId, canComment, isAdmin }: { taskId: number; 
   const remove = useDeleteComment(taskId);
   const [draft, setDraft] = useState('');
   const [editing, setEditing] = useState<{ id: number; body: string } | null>(null);
+  const [summary, setSummary] = useState<string | null>(null);
+  const summarize = useSummarizeThread();
 
   const onError = (error: unknown) => toast.error(toMessage(error));
+
+  const runSummary = () =>
+    summarize.mutate(taskId, {
+      onSuccess: (result) => setSummary(result.markdown),
+      onError,
+    });
 
   const send = () => {
     const body = draft.trim();
@@ -34,7 +43,32 @@ export function TaskComments({ taskId, canComment, isAdmin }: { taskId: number; 
 
   return (
     <section className="flex flex-col gap-3">
-      <h3 className="text-sm font-semibold">{t('title')}</h3>
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-semibold">{t('title')}</h3>
+        {/* §2 long-thread summary — only meaningful for bigger threads. */}
+        {(comments?.length ?? 0) >= 5 && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="gap-1 text-xs"
+            disabled={summarize.isPending}
+            onClick={runSummary}
+          >
+            {summarize.isPending ? (
+              <Loader2 aria-hidden className="size-3.5 animate-spin" />
+            ) : (
+              <MessageSquareText aria-hidden className="size-3.5" />
+            )}
+            خلاصه
+          </Button>
+        )}
+      </div>
+      {summary && (
+        <div className="rounded-lg border border-primary/30 bg-primary/5 p-3 text-sm whitespace-pre-wrap">
+          {summary}
+        </div>
+      )}
       {isPending ? (
         <Loader2 className="size-4 animate-spin text-muted-foreground" />
       ) : comments?.length === 0 ? (

@@ -102,7 +102,7 @@ export const useAddMember = (projectId: number) =>
     projectApi.addMember(projectId, userId, role, skills),
   );
 export const useUpdateMember = (projectId: number) =>
-  useMemberMutation(projectId, ({ userId, patch }: { userId: number; patch: { role?: AssignableRole; skills?: string[] } }) =>
+  useMemberMutation(projectId, ({ userId, patch }: { userId: number; patch: { role?: AssignableRole; skills?: string[]; capacityHoursPerWeek?: number | null; hourlyRate?: number | null } }) =>
     projectApi.updateMember(projectId, userId, patch),
   );
 export const useRemoveMember = (projectId: number) =>
