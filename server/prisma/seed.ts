@@ -284,8 +284,53 @@ async function main() {
     ],
   );
 
+  // §3 official Iranian holidays (fixed Gregorian dates recur yearly; lunar ones are
+  // re-imported manually each year — seed a reasonable recent-year baseline).
+  const now = new Date();
+  const years = [now.getUTCFullYear() - 1, now.getUTCFullYear(), now.getUTCFullYear() + 1];
+  const fixedHolidays: [number, number, string][] = [
+    // Nowruz + Nowruz holidays (approximate official range).
+    [1, 1, 'نوروز'],
+    [1, 2, 'عید نوروز'],
+    [1, 3, 'عید نوروز'],
+    [1, 4, 'عید نوروز'],
+    [1, 12, 'روز جمهوری اسلامی'],
+    [1, 13, 'سیزده‌بدر'],
+    [3, 14, 'رحلت امام خمینی'],
+    [3, 15, 'قیام ۱۵ خرداد'],
+    [11, 22, 'پیروزی انقلاب اسلامی'],
+    [12, 29, 'ملی‌شدن صنعت نفت'],
+  ];
+  // Lunar-shifted holidays already known for the current cycle (re-import yearly).
+  const datedHolidays: [number, number, number, string][] = [
+    [now.getUTCFullYear(), 2, 4, 'شهادت امام علی (ع)'],
+    [now.getUTCFullYear(), 3, 3, 'اربعین حسینی'],
+    [now.getUTCFullYear(), 6, 2, 'ولادت امام مهدی'],
+    [now.getUTCFullYear(), 9, 19, 'شهادت امام رضا (ع)'],
+    [now.getUTCFullYear(), 10, 26, 'نیمه شعبان'],
+  ];
+  for (const year of years) {
+    for (const [month, day, title] of fixedHolidays) {
+      const date = new Date(Date.UTC(year, month - 1, day));
+      await prisma.holiday.upsert({
+        where: { date },
+        update: { title },
+        create: { date, title, isRecurring: true },
+      });
+    }
+  }
+  for (const [year, month, day, title] of datedHolidays) {
+    if (!years.includes(year)) continue;
+    const date = new Date(Date.UTC(year, month - 1, day));
+    await prisma.holiday.upsert({
+      where: { date },
+      update: { title },
+      create: { date, title, isRecurring: false },
+    });
+  }
+
   console.log(
-    `Seed complete: users ${admin.email}, ${sara.email}, ${reza.email}; projects "${website.name}", "${mobile.name}".`,
+    `Seed complete: users ${admin.email}, ${sara.email}, ${reza.email}; projects "${website.name}", "${mobile.name}"; holidays ${await prisma.holiday.count()}.`,
   );
 }
 
