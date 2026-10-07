@@ -4,6 +4,7 @@ import { env } from '../../../config/env';
 import type { ProjectRole } from '../../projects';
 import { buildSchedule, type ScheduleResult, type ScheduleTask } from './schedule';
 import { addWorkingHours, parseWeekend } from '../domain/work-calendar';
+import { HolidayCalendar, addWorkingHoursWithHolidays } from '../domain/holidays';
 
 /** What scheduling needs from the projects module. */
 export interface ProjectAccess {
@@ -73,25 +74,43 @@ export class ScheduleService {
     return this.getSchedule(userId, task.projectId);
   }
 
+  private holidayCache: { at: number; cal: HolidayCalendar } | null = null;
+
+  /** Official holidays for the roll-forward math (cached 10 min — small table). */
+  private async loadHolidays(): Promise<HolidayCalendar> {
+    const now = Date.now();
+    if (this.holidayCache && now - this.holidayCache.at < 10 * 60 * 1000) return this.holidayCache.cal;
+    const rows = await this.db.holiday.findMany();
+    const cal = new HolidayCalendar(
+      rows.map((h) => ({ date: h.date, title: h.title, isRecurring: h.isRecurring })),
+    );
+    this.holidayCache = { at: now, cal };
+    return cal;
+  }
+
   /**
    * Fills missing (or stale) dates from the CPM schedule; never touches manually set
    * future dates. Anchor for the offsets: the project's startDate (or now).
+   * §3: the calendar roll skips weekends AND official Iranian holidays.
    */
   async applySchedule(userId: number, projectId: number): Promise<ScheduleResult> {
     await this.access.assertRole(projectId, userId, 'MEMBER');
     const { tasks, deps } = await loadScheduleInput(this.db, projectId);
     const schedule = buildSchedule(tasks, deps, this.weekend);
     const now = this.clock();
-    const project = await this.db.project.findFirst({
-      where: { id: projectId, deletedAt: null },
-      select: { startDate: true },
-    });
+    const [project, holidays] = await Promise.all([
+      this.db.project.findFirst({
+        where: { id: projectId, deletedAt: null },
+        select: { startDate: true },
+      }),
+      this.loadHolidays(),
+    ]);
     const anchor = project?.startDate && project.startDate > now ? project.startDate : now;
 
     for (const t of schedule.tasks) {
       const input = tasks.find((x) => x.id === t.id)!;
-      const start = addWorkingHours(anchor, t.earliestStart ?? 0, this.weekend);
-      const finish = addWorkingHours(start, t.estimateHours ?? 0, this.weekend);
+      const start = addWorkingHoursWithHolidays(anchor, t.earliestStart ?? 0, this.weekend, holidays);
+      const finish = addWorkingHoursWithHolidays(start, t.estimateHours ?? 0, this.weekend, holidays);
       const needsUpdate = input.dueDate === null || new Date(input.dueDate) < now;
       if (!needsUpdate) continue;
       await this.db.task.update({
@@ -102,7 +121,6 @@ export class ScheduleService {
     return schedule;
   }
 }
-
 export interface DependencyView {
   predecessorId: number;
   successorId: number;
