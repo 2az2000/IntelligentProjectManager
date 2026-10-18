@@ -111,3 +111,8 @@ export const useRemoveMember = (projectId: number) =>
 export function useTeam() {
   return useQuery({ queryKey: qk.team, queryFn: projectApi.team });
 }
+
+/** §Imp #4: member × week heat grid — also consumed by the Timeline over-allocation badge. */
+export function useTeamWorkload(weeks = 8) {
+  return useQuery({ queryKey: qk.teamWorkload, queryFn: () => projectApi.teamWorkload(weeks) });
+}

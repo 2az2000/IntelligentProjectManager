@@ -129,6 +129,7 @@ export class AnalyticsService {
           dueDate: true,
           estimateHours: true,
           assigneeId: true,
+          collaborators: { select: { userId: true } },
           updatedAt: true,
         },
       }),
@@ -139,11 +140,18 @@ export class AnalyticsService {
     const schedule = buildSchedule(scheduleInput.tasks, scheduleInput.deps, new Set());
     const timingById = new Map(schedule.tasks.map((t) => [t.id, t]));
 
-    // Per-assignee open estimate hours for the over-allocation signal.
+    // Per-assignee open estimate hours for the over-allocation signal. Everyone on a task counts
+    // towards their own load — leading it or sharing it.
+    const assigneesOf = (t: { assigneeId: number | null; collaborators: { userId: number }[] }) => [
+      ...(t.assigneeId === null ? [] : [t.assigneeId]),
+      ...t.collaborators.map((c) => c.userId).filter((id) => id !== t.assigneeId),
+    ];
     const openByAssignee = new Map<number, number>();
     for (const t of tasks) {
-      if (t.status === 'DONE' || t.assigneeId === null) continue;
-      openByAssignee.set(t.assigneeId, (openByAssignee.get(t.assigneeId) ?? 0) + (t.estimateHours ?? 0));
+      if (t.status === 'DONE') continue;
+      for (const userId of assigneesOf(t)) {
+        openByAssignee.set(userId, (openByAssignee.get(userId) ?? 0) + (t.estimateHours ?? 0));
+      }
     }
     const capacities = new Map<number, number | null>();
     const memberRows = await this.db.projectMember.findMany({
@@ -155,6 +163,14 @@ export class AnalyticsService {
     const riskTasks = tasks.map((t) => {
       const scheduled = timingById.get(t.id);
       const daysSinceUpdate = Math.floor((now.getTime() - t.updatedAt.getTime()) / DAY_MS);
+      // The busiest person on the task drives the over-allocation signal: one overloaded
+      // assignee is enough to put the task at risk.
+      let busiest: number | null = null;
+      for (const userId of assigneesOf(t)) {
+        if (busiest === null || (openByAssignee.get(userId) ?? 0) > (openByAssignee.get(busiest) ?? 0)) {
+          busiest = userId;
+        }
+      }
       return {
         id: t.id,
         status: t.status,
@@ -164,9 +180,8 @@ export class AnalyticsService {
         slack: scheduled?.slack ?? null,
         isCritical: scheduled?.isCritical ?? false,
         daysSinceUpdate,
-        assigneeOpenHours: t.assigneeId !== null ? (openByAssignee.get(t.assigneeId) ?? 0) : null,
-        assigneeCapacityHours:
-          t.assigneeId !== null ? (capacities.get(t.assigneeId) ?? null) : null,
+        assigneeOpenHours: busiest === null ? null : (openByAssignee.get(busiest) ?? 0),
+        assigneeCapacityHours: busiest === null ? null : (capacities.get(busiest) ?? null),
         title: t.title,
       };
     });

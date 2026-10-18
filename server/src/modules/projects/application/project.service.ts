@@ -7,8 +7,10 @@ import type {
   MemberView,
   ProjectRepository,
   ProjectView,
+  TeamWorkloadView,
   TeammateView,
 } from './project.repository';
+import { buildWeeks } from './workload';
 
 const notFound = () => new NotFoundError('PROJECT_NOT_FOUND', 'Project not found');
 
@@ -173,6 +175,19 @@ export class ProjectService {
 
   teamForUser(userId: number): Promise<TeammateView[]> {
     return this.projects.teamForUser(userId, this.clock());
+  }
+
+  /** §Imp #4: member × week open-workload heat rows, weeks counted forward from today. */
+  teamWorkloadForUser(
+    userId: number,
+    weeks: number,
+  ): Promise<{ weeks: { start: string; end: string }[]; members: TeamWorkloadView[] }> {
+    const now = this.clock();
+    const windows = buildWeeks(now, weeks);
+    return this.projects.teamWorkloadForUser(userId, windows, now).then((members) => ({
+      weeks: windows.map((w) => ({ start: w.start.toISOString(), end: w.end.toISOString() })),
+      members,
+    }));
   }
 
   /** §11: creates the project AND its template tasks (with finish-to-start edges). */

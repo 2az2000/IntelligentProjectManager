@@ -1,14 +1,17 @@
-import type { Project as ProjectRow } from '@prisma/client';
+import type { Prisma, Project as ProjectRow } from '@prisma/client';
 import type { Db } from '../../../shared/db/prisma';
+import { DEFAULT_STATUSES } from '../../statuses';
 import { Project, type ProjectChanges, type ValidNewProject } from '../domain/project.entity';
 import type { ProjectRole } from '../domain/project-role';
-import type {
+import {
   MemberView,
   ProjectRepository,
   ProjectStats,
   ProjectView,
+  TeamWorkloadView,
   TeammateView,
 } from '../application/project.repository';
+import { aggregateWorkload, type WeekWindow, type WorkloadTask } from '../application/workload';
 
 const toEntity = (row: ProjectRow): Project =>
   Project.restore({
@@ -33,12 +36,44 @@ const openTaskWhere = (projectIds: number[]) => ({
   status: { not: 'DONE' as const },
 });
 
+interface Load {
+  tasks: number;
+  points: number;
+  estimateHours: number;
+}
+
+/**
+ * Per-user share of the tasks matched by `where` where the user is a **co-assignee** (the lead is
+ * already counted by the `groupBy assigneeId` queries). Without this a member who only shares
+ * work through co-assignee rows would look idle in the members panel and the team heatmap.
+ */
+const coAssigneeLoad = async (db: Db, where: Prisma.TaskWhereInput): Promise<Map<number, Load>> => {
+  const rows = await db.taskCollaborator.findMany({
+    where: { task: where },
+    select: { userId: true, task: { select: { points: true, estimateHours: true } } },
+  });
+  const byUser = new Map<number, Load>();
+  for (const row of rows) {
+    const load = byUser.get(row.userId) ?? { tasks: 0, points: 0, estimateHours: 0 };
+    load.tasks += 1;
+    load.points += row.task.points ?? 0;
+    load.estimateHours += row.task.estimateHours ?? 0;
+    byUser.set(row.userId, load);
+  }
+  return byUser;
+};
+
 export class PrismaProjectRepository implements ProjectRepository {
   constructor(private readonly db: Db) {}
 
   async create(data: ValidNewProject): Promise<Project> {
+    // Every project is born with the four built-in workflow columns (nested write, same tx).
     const row = await this.db.project.create({
-      data: { ...data, members: { create: { userId: data.ownerId, role: 'OWNER' } } },
+      data: {
+        ...data,
+        members: { create: { userId: data.ownerId, role: 'OWNER' } },
+        statuses: { create: DEFAULT_STATUSES.map((status) => ({ ...status })) },
+      },
     });
     return toEntity(row);
   }
@@ -92,7 +127,7 @@ export class PrismaProjectRepository implements ProjectRepository {
   }
 
   async listMembers(projectId: number): Promise<MemberView[]> {
-    const [members, workload] = await Promise.all([
+    const [members, workload, shared] = await Promise.all([
       this.db.projectMember.findMany({
         where: { projectId },
         include: { user: memberUser },
@@ -104,6 +139,7 @@ export class PrismaProjectRepository implements ProjectRepository {
         _count: { _all: true },
         _sum: { points: true, estimateHours: true },
       }),
+      coAssigneeLoad(this.db, openTaskWhere([projectId])),
     ]);
     const byUser = new Map(workload.map((w) => [w.assigneeId, w]));
     return members.map((m) => ({
@@ -112,9 +148,10 @@ export class PrismaProjectRepository implements ProjectRepository {
       skills: m.skills,
       joinedAt: m.joinedAt,
       capacityHoursPerWeek: m.capacityHoursPerWeek,
-      openEstimateHours: byUser.get(m.userId)?._sum.estimateHours ?? 0,
-      openTasks: byUser.get(m.userId)?._count._all ?? 0,
-      openPoints: byUser.get(m.userId)?._sum.points ?? 0,
+      openEstimateHours:
+        (byUser.get(m.userId)?._sum.estimateHours ?? 0) + (shared.get(m.userId)?.estimateHours ?? 0),
+      openTasks: (byUser.get(m.userId)?._count._all ?? 0) + (shared.get(m.userId)?.tasks ?? 0),
+      openPoints: (byUser.get(m.userId)?._sum.points ?? 0) + (shared.get(m.userId)?.points ?? 0),
     }));
   }
 
@@ -141,7 +178,7 @@ export class PrismaProjectRepository implements ProjectRepository {
     const projectIds = await this.projectIdsForUser(userId);
     if (projectIds.length === 0) return [];
 
-    const [memberships, open, overdue] = await Promise.all([
+    const [memberships, open, overdue, sharedOpen, sharedOverdue] = await Promise.all([
       this.db.projectMember.findMany({
         where: { projectId: { in: projectIds } },
         include: { user: memberUser },
@@ -157,6 +194,8 @@ export class PrismaProjectRepository implements ProjectRepository {
         where: { ...openTaskWhere(projectIds), dueDate: { lt: now } },
         _count: { _all: true },
       }),
+      coAssigneeLoad(this.db, openTaskWhere(projectIds)),
+      coAssigneeLoad(this.db, { ...openTaskWhere(projectIds), dueDate: { lt: now } }),
     ]);
 
     const openBy = new Map(open.map((w) => [w.assigneeId, w]));
@@ -171,12 +210,74 @@ export class PrismaProjectRepository implements ProjectRepository {
       team.set(m.userId, {
         user: m.user,
         projectCount: 1,
-        openTasks: openBy.get(m.userId)?._count._all ?? 0,
-        openPoints: openBy.get(m.userId)?._sum.points ?? 0,
-        overdueTasks: overdueBy.get(m.userId) ?? 0,
+        // Lead work plus the work they only share as a co-assignee.
+        openTasks: (openBy.get(m.userId)?._count._all ?? 0) + (sharedOpen.get(m.userId)?.tasks ?? 0),
+        openPoints: (openBy.get(m.userId)?._sum.points ?? 0) + (sharedOpen.get(m.userId)?.points ?? 0),
+        overdueTasks: (overdueBy.get(m.userId) ?? 0) + (sharedOverdue.get(m.userId)?.tasks ?? 0),
       });
     }
     return [...team.values()].sort((a, b) => b.openPoints - a.openPoints || a.user.name.localeCompare(b.user.name));
+  }
+
+  async teamWorkloadForUser(userId: number, weeks: WeekWindow[], now: Date): Promise<TeamWorkloadView[]> {
+    const projectIds = await this.projectIdsForUser(userId);
+    const memberships = await this.db.projectMember.findMany({
+      where: { projectId: { in: projectIds } },
+      include: { user: memberUser },
+    });
+    // A member in several projects appears once; the first row's capacity stays authoritative.
+    const unique = new Map(memberships.map((m) => [m.userId, m]));
+    const members = [...unique.values()];
+    if (members.length === 0 || projectIds.length === 0) return [];
+
+    // Top-level tasks only: a parent's estimate already covers its subtasks, so counting
+    // both would double-book the same hours in the heat cells.
+    const rows = await this.db.task.findMany({
+      where: { ...openTaskWhere(projectIds), parentId: null },
+      select: {
+        id: true,
+        title: true,
+        projectId: true,
+        project: { select: { name: true } },
+        startDate: true,
+        dueDate: true,
+        estimateHours: true,
+        createdAt: true,
+        assigneeId: true,
+        collaborators: { select: { userId: true } },
+      },
+    });
+    const tasks: WorkloadTask[] = rows.map((r) => ({
+      id: r.id,
+      title: r.title,
+      projectId: r.projectId,
+      projectName: r.project.name,
+      assigneeId: r.assigneeId,
+      collaboratorIds: r.collaborators.map((c) => c.userId),
+      startDate: r.startDate,
+      dueDate: r.dueDate,
+      estimateHours: r.estimateHours,
+      createdAt: r.createdAt,
+    }));
+
+    const workload = aggregateWorkload(
+      tasks,
+      members.map((m) => ({ id: m.userId })),
+      weeks,
+      now,
+    );
+    return members
+      .map((m) => ({
+        user: m.user,
+        hours: [...workload.get(m.userId)!.hours],
+        cells: workload.get(m.userId)!.tasks.map((list) => list.map((entry) => ({ ...entry }))),
+        capacityHoursPerWeek: m.capacityHoursPerWeek,
+      }))
+      .sort(
+        (a, b) =>
+          b.hours.reduce((s, h) => s + h, 0) - a.hours.reduce((s, h) => s + h, 0) ||
+          a.user.name.localeCompare(b.user.name),
+      );
   }
 
   private async stats(projectIds: number[], now: Date): Promise<Map<number, ProjectStats>> {
@@ -217,7 +318,7 @@ export class PrismaProjectRepository implements ProjectRepository {
       if (row.status === 'DONE') entry.done += row._count._all;
       progress.set(row.parentId, entry);
     }
-    for (const [projectId, s] of result) {
+    for (const s of result.values()) {
       s.subtaskProgress = [...progress.entries()].map(([taskId, p]) => ({ taskId, ...p }));
     }
     return result;

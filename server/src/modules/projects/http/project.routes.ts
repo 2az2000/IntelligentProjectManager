@@ -1,14 +1,16 @@
 import { Router } from 'express';
+import { env } from '../../../config/env';
 import { currentUserId, requireAuth } from '../../../shared/auth/require-auth';
 import { handle } from '../../../shared/http/handle';
 import type { ProjectService } from '../application/project.service';
-import { toMemberDto, toProjectDto, toTeammateDto } from './project.dto';
+import { toMemberDto, toProjectDto, toTeammateDto, toTeamWorkloadDto } from './project.dto';
 import {
   addMemberBody,
   createProjectBody,
   fromTemplateBody,
   memberParams,
   projectIdParams,
+  teamWorkloadQuery,
   updateMemberBody,
   updateProjectBody,
 } from './project.schemas';
@@ -114,6 +116,18 @@ export function createTeamRouter(projects: ProjectService): Router {
     '/team',
     handle({}, async (_input, req, res) => {
       res.json((await projects.teamForUser(currentUserId(req))).map(toTeammateDto));
+    }),
+  );
+  // §Imp #4: member × week heat grid for the Members page (and the Timeline over-allocation badge).
+  router.get(
+    '/team/workload',
+    handle({ query: teamWorkloadQuery }, async ({ query }, req, res) => {
+      const result = await projects.teamWorkloadForUser(currentUserId(req), query.weeks);
+      res.json({
+        weeks: result.weeks,
+        capacityHoursPerWeek: env.WEEKLY_CAPACITY,
+        members: result.members.map(toTeamWorkloadDto),
+      });
     }),
   );
   return router;

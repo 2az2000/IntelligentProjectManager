@@ -1,5 +1,6 @@
 import type { Project, ProjectChanges, ValidNewProject } from '../domain/project.entity';
 import type { ProjectRole } from '../domain/project-role';
+import type { CellTasks, WeekWindow } from './workload';
 
 export interface UserSummary {
   id: number;
@@ -45,6 +46,17 @@ export interface TeammateView {
   overdueTasks: number;
 }
 
+/** §Imp #4: one member's heat row — hours + contributing tasks, aligned with the weeks. */
+export interface TeamWorkloadView {
+  user: UserSummary & { email: string };
+  /** Index-aligned with the requested weeks. */
+  hours: number[];
+  /** Open tasks (with their weekly hour share) per week, heaviest first. */
+  cells: CellTasks[][];
+  /** Per-member weekly capacity override (null = server default WEEKLY_CAPACITY). */
+  capacityHoursPerWeek: number | null;
+}
+
 export interface ProjectRepository {
   /** Creates the project and makes its owner an OWNER member (single transaction). */
   create(data: ValidNewProject): Promise<Project>;
@@ -65,4 +77,6 @@ export interface ProjectRepository {
   removeMember(projectId: number, userId: number): Promise<void>;
   /** Everyone who shares at least one project with the user, with workload across those projects. */
   teamForUser(userId: number, now: Date): Promise<TeammateView[]>;
+  /** Open-task estimate hours spread over `weeks` for everyone sharing a project with `userId`. */
+  teamWorkloadForUser(userId: number, weeks: WeekWindow[], now: Date): Promise<TeamWorkloadView[]>;
 }

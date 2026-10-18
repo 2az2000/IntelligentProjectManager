@@ -3,12 +3,14 @@ export { ProjectGrid } from './components/project-grid';
 export { ProjectHeader } from './components/project-header';
 export { ProjectSettings } from './components/project-settings';
 export { TeamGrid } from './components/team-grid';
+export { WorkloadHeatmap } from './components/workload-heatmap';
 export {
   useProjects,
   useProject,
   useCreateProject,
   useProjectMembers,
   useTeam,
+  useTeamWorkload,
 } from './hooks/use-projects';
 export { hasRole } from './types';
-export type { Project, ProjectRole, ProjectMember } from './types';
+export type { Project, ProjectRole, ProjectMember, TeamWorkload } from './types';

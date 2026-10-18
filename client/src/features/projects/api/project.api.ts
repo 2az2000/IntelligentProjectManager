@@ -1,5 +1,12 @@
 import { apiClient } from '@/lib/api-client';
-import type { AssignableRole, Project, ProjectMember, ProjectTemplate, Teammate } from '../types';
+import type {
+  AssignableRole,
+  Project,
+  ProjectMember,
+  ProjectTemplate,
+  Teammate,
+  TeamWorkload,
+} from '../types';
 
 export interface ProjectInput {
   name: string;
@@ -49,4 +56,7 @@ export const projectApi = {
   },
 
   team: async (): Promise<Teammate[]> => (await apiClient.get<Teammate[]>('/me/team')).data,
+  /** §Imp #4: member × week open-workload heat grid (default last/current + next 7 weeks). */
+  teamWorkload: async (weeks = 8): Promise<TeamWorkload> =>
+    (await apiClient.get<TeamWorkload>(`/me/team/workload?weeks=${weeks}`)).data,
 };

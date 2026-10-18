@@ -2,6 +2,7 @@ import type {
   MemberView,
   ProjectStats,
   ProjectView,
+  TeamWorkloadView,
   TeammateView,
   UserSummary,
 } from '../application/project.repository';
@@ -59,3 +60,13 @@ export const toMemberDto = (m: MemberView) => ({
 });
 
 export const toTeammateDto = (t: TeammateView) => ({ ...t });
+
+/** §Imp #4: heatmap row — hours/tasks stay index-shaped weeks from the service. */
+export const toTeamWorkloadDto = (m: TeamWorkloadView) => ({
+  user: m.user,
+  capacityHoursPerWeek: m.capacityHoursPerWeek,
+  cells: m.cells.map((weekTasks, weekIndex) => ({
+    hours: Math.round((m.hours[weekIndex] ?? 0) * 10) / 10,
+    tasks: weekTasks.map((t) => ({ ...t, dueDate: iso(t.dueDate) })),
+  })),
+});

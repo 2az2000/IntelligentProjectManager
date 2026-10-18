@@ -29,13 +29,47 @@ const envSchema = z.object({
   RATE_LIMIT_PER_MINUTE: z.coerce.number().int().positive().default(300),
   // Phase 5: realtime + background jobs.
   REDIS_URL: z.string().default('redis://localhost:6379'),
+  // §Imp #4 workload heatmap: weekly hours one full-time person is presumed to absorb.
+  // Global for now; per-member overrides come with capacityHoursPerWeek later.
+  WEEKLY_CAPACITY: z.coerce.number().int().positive().default(40),
   // Phase 7: free-tier LLM through any OpenAI-compatible endpoint (OpenRouter by default:
-  // Groq is blocked for Iranian IPs). DeepSeek V3.2 via its `:free` route is strong at
-  // structured JSON output. Without AI_API_KEY the /ai endpoints answer 503 AI_NOT_CONFIGURED.
+  // Groq is blocked for Iranian IPs). Without AI_API_KEY the /ai endpoints answer
+  // 503 AI_NOT_CONFIGURED.
+  //
+  // Keep the default a model that *exists right now*: a retired slug answers 404 and reads as
+  // "the AI service is unavailable". OpenRouter's catalog churns, so verify before changing it:
+  // `curl -s https://openrouter.ai/api/v1/models/<model>/endpoints | head -c 400` should list at
+  // least one endpoint with `response_format` in supported_parameters.
   AI_API_KEY: z.string().min(1).optional(),
   AI_BASE_URL: z.url().default('https://openrouter.ai/api/v1'),
-  AI_MODEL: z.string().default('deepseek/deepseek-v3.2-exp:free'),
+  AI_MODEL: z.string().default('nvidia/nemotron-3-super-120b-a12b:free'),
   AI_TIMEOUT_MS: z.coerce.number().int().positive().default(60_000),
+  // Phase 7 resilience: a rate-limited or 5xx provider shouldn't surface as a dead feature.
+  // AI_RETRY_ATTEMPTS× backoff runs first, then the request walks AI_FALLBACK_MODELS on the
+  // same provider and finally AI_FALLBACK_* (a second provider, e.g. Google AI Studio) once
+  // its key is set. Note that OpenRouter's free-model daily cap (50/day under 10 credits of
+  // lifetime purchases) is account-wide: another `:free` slug does NOT reset it, so a second
+  // provider — not another free model — is what escapes a capped day.
+  AI_RETRY_ATTEMPTS: z.coerce.number().int().min(0).max(5).default(2),
+  AI_RETRY_BASE_MS: z.coerce.number().int().min(0).max(10_000).default(800),
+  // A *chain*, not one spare: OpenRouter routes each `:free` slug through a shared upstream pool,
+  // so a single busy model answers 429 for minutes while its neighbours are idle. Each entry is
+  // tried in order and a slug that has been retired (404) is simply skipped, which is why a few
+  // names here outlive any one of them. Set your own list to override (empty = no fallbacks).
+  AI_FALLBACK_MODELS: z
+    .string()
+    .default(
+      'google/gemma-4-26b-a4b-it:free,nvidia/nemotron-3-super-120b-a12b:free,dots-studio/dots-3-note-preview:free,apodex/apodex-1.1-mini:free,liquid/lfm-2.5-2.6b:free',
+    )
+    .transform((value) =>
+      value
+        .split(',')
+        .map((model) => model.trim())
+        .filter(Boolean),
+    ),
+  AI_FALLBACK_API_KEY: z.string().min(1).optional(),
+  AI_FALLBACK_BASE_URL: z.url().optional(),
+  AI_FALLBACK_MODEL: z.string().optional(),
   JOBS_ENABLED: z
     .preprocess((value) => (value === undefined || value === '' ? undefined : value === 'true' || value === '1'), z.boolean().default(true)),
 });

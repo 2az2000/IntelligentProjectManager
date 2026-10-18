@@ -57,6 +57,31 @@ export interface Teammate {
   overdueTasks: number;
 }
 
+/** §Imp #4 — workload heatmap: one member's open-work hours per week (server-spread). */
+export interface TeamWorkloadCell {
+  hours: number;
+  /** Open tasks behind the cell's hours, heaviest share first. */
+  tasks: {
+    id: number;
+    title: string;
+    projectId: number;
+    projectName: string;
+    estimateHours: number | null;
+    dueDate: string | null;
+  }[];
+}
+
+export interface TeamWorkload {
+  capacityHoursPerWeek: number;
+  /** Saturday-opened 7-day windows, index-aligned with every member's cells. */
+  weeks: { start: string; end: string }[];
+  members: {
+    user: UserSummary & { email: string };
+    capacityHoursPerWeek: number | null;
+    cells: TeamWorkloadCell[];
+  }[];
+}
+
 /** §11 built-in project template (mirrors server/templates.ts). */
 export interface ProjectTemplate {
   id: string;

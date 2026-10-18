@@ -10,10 +10,11 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { EmptyState } from '@/components/shared/empty-state';
 import { ErrorState } from '@/components/shared/error-state';
 import { useErrorMessage } from '@/hooks/use-error-message';
+import { UserAvatar } from '@/components/shared/user-avatar';
 import { formatDate, formatNumber } from '@/lib/format';
 import { cn } from '@/lib/utils';
 // Deep imports keep the scheduling → projects/tasks graph acyclic (the header imports our barrel).
-import { useProject } from '@/features/projects/hooks/use-projects';
+import { useProject, useProjectMembers, useTeamWorkload } from '@/features/projects/hooks/use-projects';
 import { hasRole } from '@/features/projects/types';
 import { useProjectSocket } from '@/features/realtime';
 import { useApplySchedule, useDependencies, useSchedule } from '../hooks/use-schedule';
@@ -109,6 +110,8 @@ export function ProjectTimeline({ projectId }: { projectId: number }) {
           {t('unestimated', { count: formatNumber(unestimatedCount, locale) })}
         </div>
       )}
+
+      <OverloadStrip projectId={projectId} />
 
       <div className="overflow-x-auto rounded-xl border">
         <div className="min-w-[560px]">
@@ -214,6 +217,51 @@ function Bar({ row }: { row: TimelineRow }) {
           className="absolute top-2 h-4 w-2 rounded-md border border-dashed border-muted-foreground/60"
         />
       )}
+    </div>
+  );
+}
+
+/**
+ * §Imp #4: avatars of the project's members, flagged when they are over-allocated this week
+ * (≥110% of weekly capacity in the /me/team/workload heat cells).
+ */
+function OverloadStrip({ projectId }: { projectId: number }) {
+  const t = useTranslations('Scheduling');
+  const { data: members = [] } = useProjectMembers(projectId);
+  const { data: workload } = useTeamWorkload();
+
+  // The heat query spans the user's whole team; narrow it to the current project's members.
+  const memberIds = new Set(members.map((m) => m.user.id));
+  const byUser = new Map((workload?.members ?? []).map((m) => [m.user.id, m]));
+  const rows = members.map((m) => {
+    const entry = byUser.get(m.user.id);
+    const capacity = entry?.capacityHoursPerWeek ?? workload?.capacityHoursPerWeek ?? 0;
+    const hours = entry?.cells[0]?.hours ?? 0;
+    return { user: m.user, overloaded: capacity > 0 && hours >= 1.1 * capacity };
+  });
+  if (rows.length === 0) return null;
+
+  return (
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+      {rows.map(({ user, overloaded }) => (
+        <div key={user.id} className="flex items-center gap-1.5">
+          <div className="relative">
+            <UserAvatar user={user} className="size-7" />
+            {overloaded && (
+              <span
+                title={t('overloadBadge')}
+                aria-label={t('overloadBadge')}
+                className="absolute -top-1.5 -end-1.5 rounded-full bg-red-500 px-1 text-[9px] font-bold leading-4 text-white"
+              >
+                ··
+              </span>
+            )}
+          </div>
+          <span className={cn('max-w-32 truncate text-xs text-muted-foreground', overloaded && 'font-semibold text-red-600 dark:text-red-400')}>
+            {user.name}
+          </span>
+        </div>
+      ))}
     </div>
   );
 }

@@ -43,6 +43,13 @@ export const addMemberBody = z
   })
   .strict();
 
+/** §Imp #4: GET /me/team/workload?weeks=8 — 1..26 seven-day windows from today. */
+export const teamWorkloadQuery = z
+  .object({
+    weeks: z.coerce.number().int().min(1).max(26).default(8),
+  })
+  .strict();
+
 export const updateMemberBody = z
   .object({
     role: assignableRole.optional(),
