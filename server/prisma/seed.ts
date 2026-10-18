@@ -92,6 +92,25 @@ async function createTasks(
   return created;
 }
 
+/**
+ * Gives a seeded task a co-assignee (the lead stays whoever the task already has).
+ * Idempotent, so re-seeding an existing database backfills the multi-assignee demo data.
+ */
+async function ensureCollaborators(projectId: number, pairs: [title: string, userId: number][]) {
+  for (const [title, userId] of pairs) {
+    const task = await prisma.task.findFirst({
+      where: { projectId, title, deletedAt: null },
+      select: { id: true, assigneeId: true },
+    });
+    if (!task || task.assigneeId === userId) continue;
+    await prisma.taskCollaborator.upsert({
+      where: { taskId_userId: { taskId: task.id, userId } },
+      create: { taskId: task.id, userId },
+      update: {},
+    });
+  }
+}
+
 /** Links finish-to-start dependencies by seed-task title (throws when a title is missing). */
 async function linkDependencies(
   tasks: { id: number; title: string }[],
@@ -158,6 +177,8 @@ async function main() {
   }
   await ensureMember(website.id, sara.id, 'MEMBER');
   await ensureMember(website.id, reza.id, 'VIEWER');
+  // Sara designs the wireframes and the project owner sits in on them.
+  await ensureCollaborators(website.id, [['Design wireframes', admin.id]]);
   await ensureSchedule(
     website.id,
     {
@@ -265,6 +286,12 @@ async function main() {
       ['نوشتن متن‌های فروشگاه', 'انتشار در کافه‌بازار'],
     ]);
   }
+  // Two tasks the team shares: a lead plus a co-assignee each.
+  await ensureCollaborators(mobile.id, [
+    ['Push notifications', sara.id],
+    ['تست بتا با ۵۰ کاربر', reza.id],
+    ['تست بتا با ۵۰ کاربر', admin.id],
+  ]);
   await ensureSchedule(
     mobile.id,
     {
