@@ -10,6 +10,9 @@ import { ErrorState } from '@/components/shared/error-state';
 import { TableSkeleton } from '@/components/shared/loading-skeletons';
 import { useErrorMessage } from '@/hooks/use-error-message';
 import { useRouter } from '@/i18n/navigation';
+import { ProjectDocCard } from '@/features/ai';
+import { LabelManager } from '@/features/labels';
+import { StatusManager } from '@/features/statuses';
 import { useRestoreTask, useTrashTasks } from '@/features/tasks';
 import { formatNumber } from '@/lib/format';
 import { useDeleteProject, useProject, useUpdateProject } from '../hooks/use-projects';
@@ -56,6 +59,13 @@ export function ProjectSettings({ projectId }: { projectId: number }) {
 
       <ProjectMembers project={project} />
 
+      <LabelManager projectId={project.id} canEdit={canEdit} />
+
+      {/* §7 the project's own workflow columns — add QA/Release and place them where they belong. */}
+      <StatusManager projectId={project.id} canEdit={canEdit} />
+
+      <ProjectDocCard projectId={project.id} />
+
       <TrashCard projectId={project.id} canRestore={canEdit} />
 
       {project.myRole === 'OWNER' && (
@@ -79,7 +89,7 @@ export function ProjectSettings({ projectId }: { projectId: number }) {
                 remove.mutate(project.id, {
                   onSuccess: () => {
                     toast.success(t('deleted'));
-                    router.replace('/projects');
+                    router.replace('/app/projects');
                   },
                   onError: (e) => toast.error(toMessage(e)),
                 })
@@ -111,14 +121,14 @@ function TrashCard({ projectId, canRestore }: { projectId: number; canRestore: b
         {isPending ? (
           <TableSkeleton rows={1} />
         ) : !trash || trash.length === 0 ? (
-          <p className="text-sm text-muted-foreground">{t('trashEmpty')}</p>
+          <p className="text-muted-foreground text-sm">{t('trashEmpty')}</p>
         ) : (
           <ul className="divide-y">
             {trash.map((task) => (
               <li key={task.id} className="flex items-center gap-3 py-2">
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-medium">{task.title}</p>
-                  <p className="text-xs text-muted-foreground">
+                  <p className="text-muted-foreground text-xs">
                     {tt('subtask', { count: formatNumber(task.subtaskCount, locale) })}
                   </p>
                 </div>

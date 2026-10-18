@@ -22,6 +22,8 @@ import { createDashboardModule } from './modules/dashboard';
 import { createSchedulingModule } from './modules/scheduling';
 import { createActivityModule } from './modules/activity';
 import { createAttachmentsModule } from './modules/attachments';
+import { createLabelsModule } from './modules/labels';
+import { createStatusesModule } from './modules/statuses';
 import { createSearchRouter } from './modules/search';
 import { createNotificationsModule } from './modules/notifications';
 import { createJobsModule } from './modules/jobs';
@@ -97,7 +99,9 @@ export function createApp(deps: { db: Db } = { db: prisma }) {
   const users = createUsersModule({ db });
   const auth = createAuthModule({ db, users: users.service });
   const projects = createProjectsModule({ db, users: users.service });
-  const tasks = createTasksModule({ db, projects: projects.service });
+  // §7 per-project workflow columns: tasks store a status *key* and read its analytics bucket here.
+  const statuses = createStatusesModule({ db, projects: projects.service });
+  const tasks = createTasksModule({ db, projects: projects.service, statuses: statuses.service });
   const comments = createCommentsModule({ db, tasks: tasks.service });
   const dashboard = createDashboardModule({ db, projects: projects.service });
   const scheduling = createSchedulingModule({ db, projects: projects.service });
@@ -119,6 +123,8 @@ export function createApp(deps: { db: Db } = { db: prisma }) {
   };
   const activity = createActivityModule({ db, tasks: tasks.service });
   const attachments = createAttachmentsModule({ db, tasks: tasks.service });
+  // §7 structured labels: a project's own tag vocabulary (colour + icon), ADMIN-managed.
+  const labels = createLabelsModule({ db, projects: projects.service });
   const notifications = createNotificationsModule({ db });
   // Disabled in tests (and wherever REDIS_URL is unreachable).
   const jobs = createJobsModule({ db });
@@ -163,9 +169,10 @@ export function createApp(deps: { db: Db } = { db: prisma }) {
       authorId: event.authorId,
       mentionedUserIds: event.mentionedUserIds,
     });
-    if (event.assigneeId && event.assigneeId !== event.authorId) {
+    // Everyone on the task hears about the comment — the notification service skips the actor.
+    for (const userId of event.assigneeIds) {
       await notifications.service.create({
-        userId: event.assigneeId,
+        userId,
         type: 'COMMENTED',
         actorId: event.authorId,
         taskId: event.taskId,
@@ -186,9 +193,12 @@ export function createApp(deps: { db: Db } = { db: prisma }) {
 
   app.use('/auth', auth.router);
   app.use('/users', users.router);
+  app.use('/avatars', users.avatarsRouter);
   app.use('/projects/:projectId/tasks', tasks.bulkRouter, tasks.projectTasksRouter);
   app.use('/projects/:projectId/cost', tasks.projectCostRouter);
   app.use('/projects/:projectId/ai', ai.aiRouter);
+  app.use('/projects/:projectId/labels', labels.router);
+  app.use('/projects/:projectId/statuses', statuses.router);
   app.use('/projects', projects.router);
   app.use('/tasks/:taskId/comments', comments.taskCommentsRouter);
   app.use('/tasks/:taskId/time', tasks.taskTimeRouter);

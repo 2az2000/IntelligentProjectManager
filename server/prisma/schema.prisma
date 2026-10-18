@@ -59,6 +59,7 @@ model User {
   ownedProjects       Project[]            @relation("ProjectOwner")
   authoredTasks       Task[]               @relation("TaskAuthor")
   assignedTasks       Task[]               @relation("TaskAssignee")
+  collaboratingTasks  TaskCollaborator[]
   comments            Comment[]
   timeEntries         TimeEntry[]
   attachments         Attachment[]         @relation("AttachmentUploader")
@@ -112,6 +113,10 @@ model Project {
 
   members      ProjectMember[]
   tasks        Task[]
+  /// Structured label vocabulary of this project (colour + icon); task tags match labels by name.
+  labels       Label[]
+  /// Workflow columns of this project, in order; tasks point at one by `statusKey`.
+  statuses     ProjectStatus[]
   /// §6: billing-rate default for all members without an override (used by cost reports).
   hourlyRate   Decimal?        @db.Decimal(14, 2)
   /// §6: total approved budget in currency units — progress bar vs booked cost.
@@ -149,11 +154,38 @@ model ProjectMember {
   @@index([userId])
 }
 
+/// Project-scoped workflow column. `key` is what a task stores; the four built-ins
+/// (TODO/IN_PROGRESS/REVIEW/DONE) are translated client-side, custom keys show `label`.
+model ProjectStatus {
+  id        Int        @id @default(autoincrement())
+  projectId Int
+  project   Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  /// ASCII slug stored on tasks; unique inside the project.
+  key       String
+  /// Fallback display name for statuses the client has no translation for.
+  label     String
+  /// `#rrggbb` — validated by the API so the UI can render it directly.
+  color     String     @default("#64748b")
+  /// Which analytics bucket this column counts as (drives doneness & progress charts).
+  category  TaskStatus @default(TODO)
+  /// Column order inside the board — fractional, like Task.position.
+  position  Float      @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([projectId, key])
+  @@index([projectId, position])
+}
+
 model Task {
   id            Int          @id @default(autoincrement())
   title         String
   description   String?
+  /// Analytics bucket of `statusKey` (kept in sync by the service): TODO | IN_PROGRESS | REVIEW | DONE.
   status        TaskStatus   @default(TODO)
+  /// The project's workflow column this task sits in (a ProjectStatus.key of the same project).
+  statusKey     String       @default("TODO")
   priority      TaskPriority @default(MEDIUM)
   /// Ordering inside a status column (fractional indexing — see modules/tasks/domain/position.ts).
   position      Float        @default(0)
@@ -182,6 +214,8 @@ model Task {
 
   assigneeId Int?
   assignee   User? @relation("TaskAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+  /// Co-assignees: everyone who shares the task besides the lead above.
+  collaborators TaskCollaborator[]
 
   attachments   Attachment[]
   timeEntries   TimeEntry[]
@@ -199,9 +233,52 @@ model Task {
   @@index([dueDate])
 }
 
+///
+/// Several people on one task: the lead stays in `Task.assigneeId` (so workload reports and
+/// due-date reminders keep their meaning) and everyone else shares the task through a row here.
+/// Both groups are notified and both see the task in "my tasks"; `Task.assigneeId = null`
+/// means the task has no owner at all.
+///
+/// Rows are ordered by `id` so the assignee list has a stable order across requests.
+model TaskCollaborator {
+  id        Int      @id @default(autoincrement())
+  taskId    Int
+  userId    Int
+  task      Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([taskId, userId])
+  @@index([userId])
+}
+
 /// Finish-to-start: the predecessor must finish before the successor can start.
 enum DependencyType {
   FINISH_TO_START
+}
+
+///
+/// A project's own label vocabulary: the structured half of a task's free-text `tags`.
+///
+/// `Task.tags` still holds plain strings so filtering, exports and the AI tag pool keep working;
+/// a label adds the presentation the user asked for — a colour and an icon — plus one place to
+/// manage the names a project actually uses. Task tags match labels by exact name.
+model Label {
+  id        Int      @id @default(autoincrement())
+  name      String
+  /// `#rrggbb` — validated by the API so the UI can render it directly.
+  color     String
+  /// Key from the shared icon set (client/src/features/labels/lib/label-icons.ts).
+  icon      String
+  projectId Int
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  /// One label per name per project — the vocabulary has no duplicates.
+  @@unique([projectId, name])
+  @@index([projectId])
 }
 
 /// §6: actual effort tracked against a task (timer start/stop or manual minutes).
