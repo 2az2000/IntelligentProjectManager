@@ -21,7 +21,16 @@ export const userApi = {
     (await apiClient.get<UserSearchResult[]>('/users', { params: { search } })).data,
   updateMe: async (input: ProfileInput): Promise<User> =>
     (await apiClient.patch<User>('/users/me', input)).data,
-  changePassword: async (input: { currentPassword: string; newPassword: string }): Promise<void> => {
+  /** Multipart upload — alternative to pasting an avatar URL (server field "file", max 2 MB). */
+  uploadAvatar: async (file: File): Promise<User> => {
+    const form = new FormData();
+    form.append('file', file);
+    return (await apiClient.post<User>('/users/me/avatar', form)).data;
+  },
+  changePassword: async (input: {
+    currentPassword: string;
+    newPassword: string;
+  }): Promise<void> => {
     await apiClient.post('/auth/change-password', input);
   },
 };

@@ -37,6 +37,20 @@ export function useUpdateProfile() {
   });
 }
 
+export function useUploadAvatar() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (file: File) => userApi.uploadAvatar(file),
+    onSuccess: (user) => {
+      queryClient.setQueryData(qk.auth.me, user);
+      // Avatars appear on tasks, members and comments.
+      return queryClient.invalidateQueries({
+        predicate: (q) => q.queryKey[0] !== qk.auth.me[0],
+      });
+    },
+  });
+}
+
 export function useChangePassword() {
   return useMutation({ mutationFn: userApi.changePassword });
 }

@@ -5,6 +5,7 @@ import { http, HttpResponse } from 'msw';
 import type { PropsWithChildren } from 'react';
 import { describe, expect, it } from 'vitest';
 import { NextIntlClientProvider } from 'next-intl';
+import { FALLBACK_STATUSES } from '@/features/statuses';
 import { API, sara, task } from '@/test/handlers';
 import { server } from '@/test/msw-server';
 import { CreateTaskDialog } from './create-task-dialog';
@@ -39,7 +40,7 @@ describe('CreateTaskDialog AI enrichment', () => {
     );
 
     render(
-      <CreateTaskDialog projectId={1} members={[sara]} />,
+      <CreateTaskDialog projectId={1} members={[sara]} statuses={FALLBACK_STATUSES} />,
       { wrapper: createWrapper() },
     );
 
@@ -67,5 +68,6 @@ describe('CreateTaskDialog AI enrichment', () => {
     expect(created[0]?.title).toBe('صفحه فرود کمپین');
     expect(created[0]?.parentId).toBeNull();
     expect(created.slice(1).map((c) => c.parentId)).toEqual([100, 100, 100]);
-  });
+    // Four real UI interactions plus the AI preview — jsdom needs more than the 5s default.
+  }, 20000);
 });

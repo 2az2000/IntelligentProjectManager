@@ -1,4 +1,9 @@
-/** Mirrors TaskDto in docs/02-API-CONTRACT.md */
+/**
+ * Mirrors TaskDto in docs/02-API-CONTRACT.md.
+ *
+ * These four are the *analytics buckets* (`Task.status`). The board columns a task actually sits
+ * in are the project's own `statusKey`s — see features/statuses.
+ */
 export const TASK_STATUSES = ['TODO', 'IN_PROGRESS', 'REVIEW', 'DONE'] as const;
 export const TASK_PRIORITIES = ['LOW', 'MEDIUM', 'HIGH', 'URGENT'] as const;
 
@@ -22,6 +27,8 @@ export interface Task {
   title: string;
   description: string | null;
   status: TaskStatus;
+  /** The project's workflow column this task sits in (`ProjectStatus.key`). */
+  statusKey: string;
   priority: TaskPriority;
   position: number;
   tags: string[];
@@ -32,7 +39,10 @@ export interface Task {
   dueDate: string | null;
   completedAt: string | null;
   author: UserSummary;
+  /** Lead assignee; null when the task has no owner. */
   assignee: UserSummary | null;
+  /** Lead first, then co-assignees — everyone who shares the task. */
+  assignees: UserSummary[];
   subtaskCount: number;
   doneSubtaskCount: number;
   commentCount: number;

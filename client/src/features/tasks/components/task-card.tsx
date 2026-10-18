@@ -5,19 +5,23 @@ import { CSS } from '@dnd-kit/utilities';
 import { CheckSquare, MessageSquare } from 'lucide-react';
 import { useLocale } from 'next-intl';
 import { Badge } from '@/components/ui/badge';
-import { UserAvatar } from '@/components/shared/user-avatar';
+import { LabelChip, labelByName, type Label } from '@/features/labels';
 import { formatNumber } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import type { Task } from '../types';
 import { DueDate, PriorityBadge } from './task-badges';
+import { AssigneeStack } from './task-fields';
 
 export function TaskCardView({
   task,
   dragging,
+  labels,
   onOpen,
 }: {
   task: Task;
   dragging?: boolean;
+  /** The project's label vocabulary — gives matching tags their colour and icon. */
+  labels?: Label[];
   onOpen?: () => void;
 }) {
   const locale = useLocale();
@@ -27,9 +31,10 @@ export function TaskCardView({
     <div
       onClick={onOpen}
       className={cn(
-        'flex flex-col gap-2 rounded-lg border bg-card p-3 text-start shadow-xs transition-shadow hover:shadow-md',
-        onOpen && 'cursor-pointer',
-        dragging && 'shadow-lg ring-2 ring-primary',
+        'flex flex-col gap-2 rounded-lg border bg-card p-3 text-start shadow-xs transition-[box-shadow,transform] duration-150',
+        onOpen && 'cursor-pointer hover:-translate-y-px hover:shadow-md',
+        // The lifted overlay card: tilted, raised and clearly "in hand".
+        dragging && 'rotate-[1.5deg] scale-[1.03] cursor-grabbing shadow-2xl ring-2 ring-primary',
       )}
     >
       <div className="flex items-start justify-between gap-2">
@@ -40,9 +45,8 @@ export function TaskCardView({
       {task.tags.length > 0 && (
         <div className="flex flex-wrap gap-1">
           {task.tags.map((tag) => (
-            <Badge key={tag} variant="outline" className="h-5 px-1.5 text-[10px] font-normal">
-              #{tag}
-            </Badge>
+            // Colour + icon come from the project's vocabulary; unknown tags stay plain.
+            <LabelChip key={tag} name={tag} label={labelByName(labels, tag)} className="h-5 text-[10px]" />
           ))}
         </div>
       )}
@@ -68,7 +72,7 @@ export function TaskCardView({
             </Badge>
           )}
         </div>
-        {task.assignee && <UserAvatar user={task.assignee} className="size-6" />}
+        <AssigneeStack assignees={task.assignees} />
       </div>
     </div>
   );
@@ -77,23 +81,28 @@ export function TaskCardView({
 export function SortableTaskCard({
   task,
   disabled,
+  labels,
   onOpen,
 }: {
   task: Task;
   disabled?: boolean;
+  labels?: Label[];
   onOpen: (taskId: number) => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: task.id,
-    data: { status: task.status },
+    // The board resolves a drop target from this key when the pointer is over a card.
+    data: { statusKey: task.statusKey },
     disabled,
   });
 
   return (
     <div
       ref={setNodeRef}
-      style={{ transform: CSS.Transform.toString(transform), transition }}
-      className={cn('mb-2 rounded-lg', isDragging && 'opacity-40')}
+      // While dragging, `DragOverlay` is the card the user sees moving. Leaving the transform
+      // on this node too would draw a second, semi-transparent card under the pointer.
+      style={isDragging ? undefined : { transform: CSS.Transform.toString(transform), transition }}
+      className={cn('mb-2 rounded-lg', !disabled && 'cursor-grab touch-none active:cursor-grabbing')}
       {...attributes}
       {...listeners}
       onKeyDown={(event) => {
@@ -102,7 +111,16 @@ export function SortableTaskCard({
         else listeners?.onKeyDown?.(event);
       }}
     >
-      <TaskCardView task={task} onOpen={() => onOpen(task.id)} />
+      {isDragging ? (
+        // Keep the exact slot (so nothing jumps) but mark it as "the card left from here".
+        <div className="rounded-lg outline-2 outline-dashed outline-primary/40">
+          <div className="invisible" aria-hidden>
+            <TaskCardView task={task} labels={labels} />
+          </div>
+        </div>
+      ) : (
+        <TaskCardView task={task} labels={labels} onOpen={() => onOpen(task.id)} />
+      )}
     </div>
   );
 }

@@ -10,6 +10,7 @@ export const bulkUpdateBody = z
     ids: z.array(z.number().int().positive()).min(1).max(100),
     patch: z
       .object({
+        statusKey: z.string().trim().min(1).max(40).optional(),
         status: z.enum(['TODO', 'IN_PROGRESS', 'REVIEW', 'DONE']).optional(),
         priority: z.enum(['LOW', 'MEDIUM', 'HIGH', 'URGENT']).optional(),
         assigneeId: z.number().int().positive().nullable().optional(),

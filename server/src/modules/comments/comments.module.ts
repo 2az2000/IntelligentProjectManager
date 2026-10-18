@@ -43,8 +43,8 @@ export interface CommentCreatedHook {
     authorId: number;
     taskId: number;
     projectId: number;
-    /** Task assignee — notified about comments on their tasks. */
-    assigneeId: number | null;
+    /** Everyone on the task (lead + co-assignees) — all notified about comments on it. */
+    assigneeIds: number[];
     /** Project members @-mentioned in the body. */
     mentionedUserIds: number[];
   }): void | Promise<void>;
@@ -79,7 +79,10 @@ export class CommentService {
 
     const task = await this.db.task.findUnique({
       where: { id: taskId },
-      select: { assigneeId: true },
+      select: {
+        assigneeId: true,
+        collaborators: { select: { userId: true }, orderBy: { id: 'asc' } },
+      },
     });
     const mentionedUserIds = await this.findMentions(projectId, trimmed);
     await this.fireCreated({
@@ -87,7 +90,12 @@ export class CommentService {
       authorId: userId,
       taskId,
       projectId,
-      assigneeId: task?.assigneeId ?? null,
+      assigneeIds: [
+        ...(task?.assigneeId == null ? [] : [task.assigneeId]),
+        ...(task?.collaborators ?? [])
+          .map((c) => c.userId)
+          .filter((id) => id !== task?.assigneeId),
+      ],
       mentionedUserIds,
     });
     return created;

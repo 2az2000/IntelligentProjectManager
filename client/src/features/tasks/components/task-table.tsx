@@ -12,31 +12,43 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { UserAvatar } from '@/components/shared/user-avatar';
 import { useBulkUpdate } from '../hooks/use-bulk';
 import { formatNumber } from '@/lib/format';
-import { TASK_PRIORITIES, TASK_STATUSES, type Task } from '../types';
-import { DueDate, PriorityBadge, StatusBadge } from './task-badges';
+import { StatusBadge, sortStatuses, type ProjectStatus } from '@/features/statuses';
+import { TASK_PRIORITIES, type Task } from '../types';
+import { DueDate, PriorityBadge } from './task-badges';
+import { AssigneeStack } from './task-fields';
 
 type SortKey = 'title' | 'status' | 'priority' | 'assignee' | 'dueDate' | 'points';
 
-const compare: Record<SortKey, (a: Task, b: Task) => number> = {
-  title: (a, b) => a.title.localeCompare(b.title),
-  status: (a, b) => TASK_STATUSES.indexOf(a.status) - TASK_STATUSES.indexOf(b.status),
-  priority: (a, b) => TASK_PRIORITIES.indexOf(a.priority) - TASK_PRIORITIES.indexOf(b.priority),
-  assignee: (a, b) => (a.assignee?.name ?? '￿').localeCompare(b.assignee?.name ?? '￿'),
-  dueDate: (a, b) =>
-    (a.dueDate ? Date.parse(a.dueDate) : Infinity) - (b.dueDate ? Date.parse(b.dueDate) : Infinity),
-  points: (a, b) => (a.points ?? -1) - (b.points ?? -1),
+/** Sorts status by the project's own board order, so the table agrees with the kanban. */
+const makeCompare = (statuses: ProjectStatus[]): Record<SortKey, (a: Task, b: Task) => number> => {
+  const order = new Map(sortStatuses(statuses).map((status, index) => [status.key, index]));
+  return {
+    title: (a, b) => a.title.localeCompare(b.title),
+    status: (a, b) =>
+      (order.get(a.statusKey) ?? Number.MAX_SAFE_INTEGER) -
+      (order.get(b.statusKey) ?? Number.MAX_SAFE_INTEGER),
+    priority: (a, b) => TASK_PRIORITIES.indexOf(a.priority) - TASK_PRIORITIES.indexOf(b.priority),
+    // Ordered by the lead — the person the task is counted against.
+    assignee: (a, b) =>
+      (a.assignees[0]?.name ?? '￿').localeCompare(b.assignees[0]?.name ?? '￿'),
+    dueDate: (a, b) =>
+      (a.dueDate ? Date.parse(a.dueDate) : Infinity) - (b.dueDate ? Date.parse(b.dueDate) : Infinity),
+    points: (a, b) => (a.points ?? -1) - (b.points ?? -1),
+  };
 };
 
 export function TaskTable({
   tasks,
+  statuses = [],
   onOpen,
   showProject = false,
   projectId,
 }: {
   tasks: Task[];
+  /** The project's workflow columns — used for the status badge and the sort order. */
+  statuses?: ProjectStatus[];
   onOpen: (taskId: number) => void;
   showProject?: boolean;
   /** When given, §4 bulk-selection checkboxes appear (project-scoped tables only). */
@@ -47,6 +59,7 @@ export function TaskTable({
   const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 }>({ key: 'status', dir: 1 });
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const bulk = useBulkUpdate(projectId ?? 0);
+  const compare = useMemo(() => makeCompare(statuses), [statuses]);
 
   const toggle = (id: number, checked: boolean) =>
     setSelected((prev) => {
@@ -58,7 +71,7 @@ export function TaskTable({
 
   const rows = useMemo(
     () => [...tasks].sort((a, b) => compare[sort.key](a, b) * sort.dir || a.position - b.position),
-    [tasks, sort],
+    [compare, sort, tasks],
   );
 
   const header = (key: SortKey, label: string, className = 'text-start') => (
@@ -139,16 +152,32 @@ export function TaskTable({
             <TableCell className="max-w-72 truncate font-medium">{task.title}</TableCell>
             {showProject && <TableCell className="text-muted-foreground">{task.project.name}</TableCell>}
             <TableCell>
-              <StatusBadge status={task.status} />
+              {(() => {
+                const status = statuses.find((candidate) => candidate.key === task.statusKey);
+                // A column deleted while this page was open still has to render something.
+                return status ? (
+                  <StatusBadge status={status} />
+                ) : (
+                  <span className="text-muted-foreground text-xs">{task.statusKey}</span>
+                );
+              })()}
             </TableCell>
             <TableCell>
               <PriorityBadge priority={task.priority} />
             </TableCell>
             <TableCell>
-              {task.assignee ? (
+              {task.assignees.length > 0 ? (
                 <span className="flex items-center gap-2">
-                  <UserAvatar user={task.assignee} className="size-6" />
-                  {task.assignee.name}
+                  <AssigneeStack assignees={task.assignees} max={2} />
+                  <span>
+                    {task.assignees[0].name}
+                    {task.assignees.length > 1 && (
+                      <span className="text-muted-foreground">
+                        {' '}
+                        +{task.assignees.length - 1}
+                      </span>
+                    )}
+                  </span>
                 </span>
               ) : (
                 <span className="text-muted-foreground">—</span>

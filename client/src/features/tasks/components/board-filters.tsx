@@ -24,8 +24,11 @@ export function applyFilters(tasks: Task[], filters: TaskFilters): Task[] {
         t.title.toLowerCase().includes(search) ||
         t.tags.some((tag) => tag.toLowerCase().includes(search))) &&
       (filters.priority === undefined || t.priority === filters.priority) &&
+      // Filtering by a person matches any task they share — as the lead or as a co-assignee.
       (filters.assigneeId === undefined ||
-        (filters.assigneeId === 0 ? t.assignee === null : t.assignee?.id === filters.assigneeId)),
+        (filters.assigneeId === 0
+          ? t.assignees.length === 0
+          : t.assignees.some((u) => u.id === filters.assigneeId))),
   );
 }
 

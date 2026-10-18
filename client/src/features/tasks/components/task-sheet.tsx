@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { Loader2, Plus, Sparkles, Trash2 } from 'lucide-react';
+import { Loader2, Plus, Trash2 } from 'lucide-react';
 import { useLocale, useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -25,21 +25,28 @@ import { ErrorState } from '@/components/shared/error-state';
 import { useCurrentUser } from '@/features/auth';
 import { ActivityTimeline } from '@/features/activity';
 import { AttachmentsSection } from '@/features/attachments';
-import { useAiEstimate } from '@/features/ai';
+import { LabelPicker } from '@/features/labels';
 import { hasRole, useProject, useProjectMembers } from '@/features/projects';
 import { DependenciesSection } from '@/features/scheduling';
+import {
+  FALLBACK_STATUSES,
+  sortStatuses,
+  useProjectStatuses,
+  type ProjectStatus,
+} from '@/features/statuses';
 import { useErrorMessage } from '@/hooks/use-error-message';
 import { Link } from '@/i18n/navigation';
 import { toDayIso } from '@/lib/calendar';
 import { formatDate, formatNumber } from '@/lib/format';
 import type { UpdateTaskInput } from '../api/task.api';
+import { toAssigneeIds } from '../lib/assignees';
 import { useCreateTask, useDeleteTask, useTask, useUpdateTask } from '../hooks/use-tasks';
 import { useTaskSheet } from '../hooks/use-task-sheet';
-import { parseTags } from '../schemas/task.schema';
 import type { TaskDetail } from '../types';
 import { TaskComments } from './task-comments';
+import { TaskReport } from './task-report';
 import { TimeTracker } from './time-tracker';
-import { AssigneeSelect, PrioritySelect, StatusSelect } from './task-fields';
+import { AssigneePicker, PrioritySelect, StatusSelect } from './task-fields';
 
 /** Global task detail panel, opened by `?task=<id>` on any page of the app. */
 export function TaskSheet() {
@@ -81,6 +88,9 @@ function TaskDetailBody({ task }: { task: TaskDetail }) {
   const { data: me } = useCurrentUser();
   const { data: project } = useProject(task.projectId);
   const { data: members = [] } = useProjectMembers(task.projectId);
+  // The status picker offers the project's own columns, not a hard-coded four.
+  const { data: projectStatuses } = useProjectStatuses(task.projectId);
+  const statuses = sortStatuses(projectStatuses ?? FALLBACK_STATUSES);
   const update = useUpdateTask();
   const remove = useDeleteTask();
 
@@ -93,7 +103,8 @@ function TaskDetailBody({ task }: { task: TaskDetail }) {
 
   const [title, setTitle] = useState(task.title);
   const [description, setDescription] = useState(task.description ?? '');
-  const [tags, setTags] = useState(task.tags.join(', '));
+  // Plain strings, exactly as the API stores them — labels are a presentation layer on top.
+  const [tags, setTags] = useState<string[]>(task.tags);
   const [points, setPoints] = useState(task.points?.toString() ?? '');
   const [estimateHours, setEstimateHours] = useState(task.estimateHours?.toString() ?? '');
 
@@ -110,7 +121,7 @@ function TaskDetailBody({ task }: { task: TaskDetail }) {
     <div className="flex flex-col gap-5 p-6">
       <SheetHeader className="gap-1 p-0">
         <SheetDescription asChild>
-          <Link href={`/projects/${task.projectId}/board`} className="text-xs hover:underline">
+          <Link href={`/app/projects/${task.projectId}/board`} className="text-xs hover:underline">
             {task.project.name}
             {task.parentId && ` · ${t('subtask')}`}
           </Link>
@@ -129,7 +140,13 @@ function TaskDetailBody({ task }: { task: TaskDetail }) {
 
       <div className="grid grid-cols-2 gap-x-4 gap-y-3">
         <Field label={t('statusLabel')} id="task-status">
-          <StatusSelect id="task-status" value={task.status} disabled={!canEdit} onChange={(status) => save({ status })} />
+          <StatusSelect
+            id="task-status"
+            value={task.statusKey}
+            statuses={statuses}
+            disabled={!canEdit}
+            onChange={(statusKey) => save({ statusKey })}
+          />
         </Field>
         <Field label={t('priorityLabel')} id="task-priority">
           <PrioritySelect
@@ -140,12 +157,13 @@ function TaskDetailBody({ task }: { task: TaskDetail }) {
           />
         </Field>
         <Field label={t('assigneeLabel')} id="task-assignee">
-          <AssigneeSelect
+          {/* The whole team on the task: checkboxes, one of them the lead. */}
+          <AssigneePicker
             id="task-assignee"
-            value={task.assignee?.id ?? null}
+            value={toAssigneeIds(task.assignees)}
             members={assignable}
             disabled={!canEdit}
-            onChange={(assigneeId) => save({ assigneeId })}
+            onChange={(assigneeIds) => save({ assigneeIds })}
           />
         </Field>
         <Field label={t('dueDateLabel')} id="task-due">
@@ -172,38 +190,36 @@ function TaskDetailBody({ task }: { task: TaskDetail }) {
           />
         </Field>
         <Field label={t('estimateHoursLabel')} id="task-estimate">
-          <div className="flex items-center gap-1">
-            <Input
-              id="task-estimate"
-              type="number"
-              min={0}
-              max={10000}
-              step="0.5"
-              value={estimateHours}
-              disabled={!canEdit}
-              onChange={(e) => setEstimateHours(e.target.value)}
-              onBlur={() => {
-                const next = estimateHours === '' ? null : Math.max(0, Math.min(10000, Number(estimateHours)));
-                if (next !== task.estimateHours && (next === null || Number.isFinite(next))) save({ estimateHours: next });
-              }}
-            />
-            {canEdit && task.parentId === null && <AiEstimateButton projectId={task.projectId} title={task.title} onApply={(hours) => { setEstimateHours(String(hours)); save({ estimateHours: hours }); }} />}
-          </div>
+          <Input
+            id="task-estimate"
+            type="number"
+            min={0}
+            max={10000}
+            step="0.5"
+            value={estimateHours}
+            disabled={!canEdit}
+            onChange={(e) => setEstimateHours(e.target.value)}
+            onBlur={() => {
+              const next = estimateHours === '' ? null : Math.max(0, Math.min(10000, Number(estimateHours)));
+              if (next !== task.estimateHours && (next === null || Number.isFinite(next))) save({ estimateHours: next });
+            }}
+          />
         </Field>
         <Field label={t('tagsLabel')} id="task-tags">
-          <Input
-            id="task-tags"
+          <LabelPicker
+            projectId={task.projectId}
             value={tags}
-            placeholder={t('tagsPlaceholder')}
             disabled={!canEdit}
-            onChange={(e) => setTags(e.target.value)}
-            onBlur={() => {
-              const next = parseTags(tags);
-              if (next.join('|') !== task.tags.join('|')) save({ tags: next });
+            onChange={(next) => {
+              setTags(next);
+              save({ tags: next });
             }}
           />
         </Field>
       </div>
+
+      {/* What the numbers actually say: planned vs booked, blockers, criticality, stale/overdue. */}
+      <TaskReport task={task} statuses={statuses} />
 
       <Field label={t('descriptionLabel')} id="task-description">
         <Textarea
@@ -224,7 +240,7 @@ function TaskDetailBody({ task }: { task: TaskDetail }) {
 
       {task.parentId === null && (
         <>
-          <Subtasks task={task} canEdit={canEdit} onOpen={openTask} />
+          <Subtasks task={task} canEdit={canEdit} onOpen={openTask} statuses={statuses} />
           <DependenciesSection task={task} canEdit={canEdit} />
         </>
       )}
@@ -249,7 +265,7 @@ function TaskDetailBody({ task }: { task: TaskDetail }) {
                 {t('delete')}
               </Button>
             }
-            title={t('deleteTitle')}
+            title={t('deleteTitle', { title: task.title })}
             description={t('deleteDescription', { title: task.title })}
             confirmLabel={t('delete')}
             onConfirm={() =>
@@ -273,10 +289,12 @@ function Subtasks({
   task,
   canEdit,
   onOpen,
+  statuses,
 }: {
   task: TaskDetail;
   canEdit: boolean;
   onOpen: (taskId: number) => void;
+  statuses: ProjectStatus[];
 }) {
   const t = useTranslations('Tasks');
   const locale = useLocale();
@@ -286,6 +304,9 @@ function Subtasks({
   const [title, setTitle] = useState('');
   const done = task.subtasks.filter((s) => s.status === 'DONE').length;
   const total = task.subtasks.length;
+  // "Done" may be a renamed or custom column; tick means *its* done column, untick the first one.
+  const doneKey = statuses.find((status) => status.category === 'DONE')?.key ?? 'DONE';
+  const startKey = statuses[0]?.key ?? 'TODO';
 
   const add = () => {
     const value = title.trim();
@@ -316,7 +337,7 @@ function Subtasks({
               aria-label={sub.title}
               onCheckedChange={(checked) =>
                 update.mutate(
-                  { taskId: sub.id, input: { status: checked ? 'DONE' : 'TODO' } },
+                  { taskId: sub.id, input: { statusKey: checked ? doneKey : startKey } },
                   { onError: (error) => toast.error(toMessage(error)) },
                 )
               }
@@ -360,49 +381,3 @@ function Field({ label, id, children }: { label: string; id: string; children: R
   );
 }
 
-/** §2 smart-estimate button — fills the empty estimate field with the AI suggestion. */
-function AiEstimateButton({
-  projectId,
-  title,
-  onApply,
-}: {
-  projectId: number;
-  title: string;
-  onApply: (hours: number) => void;
-}) {
-  const t = useTranslations('Ai');
-  const toMessage = useErrorMessage();
-  const estimate = useAiEstimate(projectId);
-
-  const run = () =>
-    estimate.mutate(
-      { title },
-      {
-        onSuccess: (suggestion) => {
-          if (suggestion.estimateHours !== null) onApply(suggestion.estimateHours);
-          toast.success(
-            suggestion.basedOn > 0
-              ? t('estimateBasedOn', { count: suggestion.basedOn })
-              : (suggestion.rationale || t('estimate')),
-            { duration: 6000 },
-          );
-        },
-        onError: (error) => toast.error(toMessage(error)),
-      },
-    );
-
-  return (
-    <Button
-      type="button"
-      variant="outline"
-      size="sm"
-      className="h-9 shrink-0"
-      disabled={estimate.isPending}
-      onClick={run}
-      title={t('estimate')}
-    >
-      {estimate.isPending ? <Loader2 aria-hidden className="size-4 animate-spin" /> : <Sparkles aria-hidden className="size-4" />}
-      {t('estimate')}
-    </Button>
-  );
-}

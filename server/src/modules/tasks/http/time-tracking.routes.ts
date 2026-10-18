@@ -16,15 +16,6 @@ export const manualTimeBody = z
   })
   .strict();
 
-/** Project budget/rate settings (ADMIN+ only). */
-export const budgetBody = z
-  .object({
-    hourlyRate: z.number().min(0).max(1_000_000).nullable().optional(),
-    budgetAmount: z.number().min(0).max(1_000_000_000).nullable().optional(),
-  })
-  .strict()
-  .refine((b) => b.hourlyRate !== undefined || b.budgetAmount !== undefined, 'At least one field is required');
-
 /** Mounted at /tasks/:taskId/time */
 export function createTaskTimeRouter(time: TimeTrackingService): Router {
   const router = Router({ mergeParams: true });
@@ -86,13 +77,13 @@ export function createMyTimeRouter(time: TimeTrackingService): Router {
   return router;
 }
 
-/** Mounted at /projects/:projectId — cost report (GET) + budget settings (PATCH). */
+/** Mounted at /projects/:projectId/cost — the cost report for one project. */
 export function createProjectCostRouter(time: TimeTrackingService): Router {
   const router = Router({ mergeParams: true });
   router.use(requireAuth);
 
   router.get(
-    '/cost',
+    '/',
     handle({ params: projectIdParams }, async ({ params }, req, res) => {
       res.json(await time.projectCost(currentUserId(req), params.projectId));
     }),

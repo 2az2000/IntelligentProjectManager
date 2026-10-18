@@ -12,13 +12,18 @@ export const qk = {
     detail: (projectId: number) => ['projects', 'detail', projectId] as const,
     members: (projectId: number) => ['projects', 'members', projectId] as const,
   },
+  statuses: {
+    byProject: (projectId: number) => ['statuses', 'project', projectId] as const,
+  },
   team: ['team'] as const,
+  teamWorkload: ['team', 'workload'] as const,
   tasks: {
     all: ['tasks'] as const,
     byProject: (projectId: number) => ['tasks', 'project', projectId] as const,
     detail: (taskId: number) => ['tasks', 'detail', taskId] as const,
     mine: (includeDone: boolean) => ['tasks', 'mine', includeDone] as const,
-    calendar: (from: string, to: string, scope: string) => ['tasks', 'calendar', from, to, scope] as const,
+    calendar: (from: string, to: string, scope: string) =>
+      ['tasks', 'calendar', from, to, scope] as const,
     trash: (projectId: number) => ['tasks', 'trash', projectId] as const,
   },
   comments: {
@@ -60,8 +65,13 @@ export const qk = {
   activity: {
     byTask: (taskId: number) => ['activity', taskId] as const,
   },
+  labels: {
+    all: ['labels'] as const,
+    byProject: (projectId: number) => ['labels', 'project', projectId] as const,
+  },
   attachments: {
     byTask: (taskId: number) => ['attachments', taskId] as const,
   },
   dashboard: ['dashboard'] as const,
+  digest: ['dashboard', 'digest'] as const,
 };

@@ -10,6 +10,7 @@ const base: TaskProps = {
   title: 'Task',
   description: null,
   status: 'TODO',
+  statusKey: 'TODO',
   priority: 'MEDIUM',
   position: 1024,
   tags: [],

@@ -2,6 +2,7 @@ import { ForbiddenError, NotFoundError, ValidationError } from '../../../shared/
 import { logger } from '../../../shared/logger';
 import type { TaskFieldChange } from '../../../shared/realtime/bus';
 import { hasRole, type ProjectRole } from '../../projects';
+import type { StatusCategory, StatusView } from '../../statuses';
 import { POSITION_STEP, positionBetween } from '../domain/position';
 import { Task, type NewTask, type TaskChanges, type TaskStatus } from '../domain/task.entity';
 import type {
@@ -21,14 +22,32 @@ export interface ProjectAccess {
   projectIdsForUser(userId: number): Promise<number[]>;
 }
 
-export type CreateTaskInput = Omit<NewTask, 'authorId'>;
+export type CreateTaskInput = Omit<NewTask, 'authorId'> & {
+  /** Full assignee set: the first id becomes the lead. Wins over `assigneeId` when both are sent. */
+  assigneeIds?: number[];
+};
+
+/** A task edit: the editable fields plus the whole assignee set as an explicit replacement. */
+export type UpdateTaskInput = TaskChanges & { assigneeIds?: number[] };
 
 export interface MoveTaskInput {
-  status: TaskStatus;
+  /** Target workflow column (`ProjectStatus.key`). */
+  statusKey: string;
   /** Task that will sit directly above the moved task (same column). */
   beforeId?: number;
   /** Task that will sit directly below the moved task (same column). */
   afterId?: number;
+}
+
+/**
+ * What tasks need from the statuses module. Structural (not the class) so unit tests can pass a
+ * stub and the tasks module keeps depending on a contract instead of an implementation.
+ */
+export interface StatusLookup {
+  ordered(projectId: number): Promise<StatusView[]>;
+  resolve(projectId: number, key: string): Promise<StatusView | null>;
+  keyForCategory(projectId: number, category: StatusCategory): Promise<string>;
+  ensureDefaults(projectId: number): Promise<void>;
 }
 
 const taskNotFound = () => new NotFoundError('TASK_NOT_FOUND', 'Task not found');
@@ -46,8 +65,25 @@ export interface TaskChangedHook {
   }): void | Promise<void>;
 }
 
-/** Fields tracked in the activity log / realtime payload. */
-const TRACKED_FIELDS = ['title', 'status', 'priority', 'assigneeId', 'startDate', 'dueDate', 'points', 'estimateHours'] as const;
+/**
+ * Fields tracked in the activity log / realtime payload.
+ *
+ * `description` and `tags` are here so the task's activity report can say *what* changed on an
+ * edit instead of a bare "updated the task" — the report is only as useful as this list.
+ * Ownership is tracked as `assignees` (the whole set) rather than the bare `assigneeId` column.
+ */
+const TRACKED_FIELDS = [
+  'title',
+  'status',
+  'statusKey',
+  'priority',
+  'startDate',
+  'dueDate',
+  'points',
+  'estimateHours',
+  'description',
+  'tags',
+] as const;
 
 type TrackedField = (typeof TRACKED_FIELDS)[number];
 
@@ -64,6 +100,7 @@ export class TaskService {
   constructor(
     private readonly tasks: TaskRepository,
     private readonly access: ProjectAccess,
+    private readonly statuses: StatusLookup,
     private readonly clock: () => Date = () => new Date(),
   ) {}
 
@@ -83,41 +120,99 @@ export class TaskService {
     await this.access.assertRole(input.projectId, userId, 'MEMBER');
     const parentId = input.parentId ?? null;
     if (parentId !== null) await this.assertValidParent(parentId, input.projectId);
-    if (input.assigneeId != null) await this.assertAssignable(input.projectId, input.assigneeId);
 
-    const status = input.status ?? 'TODO';
-    const last = await this.tasks.lastPosition(input.projectId, parentId, status);
-    const position = (last ?? 0) + POSITION_STEP;
-    const created = await this.tasks.create(
-      Task.validateNew({ ...input, authorId: userId }, position, this.clock()),
+    const { assigneeIds, assigneeId, ...fields } = input;
+    const assignees = await this.assertAssignees(
+      input.projectId,
+      assigneeIds ?? (assigneeId != null ? [assigneeId] : []),
     );
-    await this.fire({ actorId: userId, projectId: input.projectId, taskId: created.id, kind: 'created' });
+
+    const column = await this.resolveColumn(input.projectId, input.statusKey, input.status);
+    const last = await this.tasks.lastPosition(input.projectId, parentId, column.key);
+    const position = (last ?? 0) + POSITION_STEP;
+    let created = await this.tasks.create(
+      Task.validateNew(
+        {
+          ...fields,
+          assigneeId: assignees[0],
+          statusKey: column.key,
+          status: column.category,
+          authorId: userId,
+        },
+        position,
+        this.clock(),
+      ),
+    );
+    // Everyone beyond the lead is stored in the join table — one extra write, same request.
+    if (assignees.length > 1) created = await this.tasks.setAssignees(created.id, assignees);
+    await this.fire({
+      actorId: userId,
+      projectId: input.projectId,
+      taskId: created.id,
+      kind: 'created',
+      ...(assignees.length > 0 && { notifyUserIds: assignees }),
+    });
     return created;
   }
 
-  async update(userId: number, taskId: number, changes: TaskChanges): Promise<TaskView> {
+  async update(userId: number, taskId: number, input: UpdateTaskInput): Promise<TaskView> {
     const task = await this.load(taskId);
     await this.access.assertRole(task.projectId, userId, 'MEMBER');
-    if (changes.assigneeId != null) await this.assertAssignable(task.projectId, changes.assigneeId);
+
+    const { assigneeIds, ...fields } = input;
+    const ownershipEdited = assigneeIds !== undefined || fields.assigneeId !== undefined;
+    const previousAssignees = ownershipEdited ? await this.tasks.assigneeSet(taskId) : [];
+    const nextAssignees = !ownershipEdited
+      ? undefined
+      : assigneeIds !== undefined
+        ? // An explicit set replaces everything; the first id leads.
+          await this.assertAssignees(task.projectId, assigneeIds)
+        : fields.assigneeId == null
+          ? // Legacy `assigneeId: null` means "nobody owns this" — the co-assignees go too.
+            []
+          : // Legacy single edit: only the lead changes, co-assignees stay (nobody listed twice).
+            await this.assertAssignees(task.projectId, [
+              fields.assigneeId,
+              ...previousAssignees.filter((id) => id !== fields.assigneeId),
+            ]);
+
+    // The set is a relation, not a column — it is written through setAssignees below.
+    const changes: TaskChanges = { ...fields };
+    delete changes.assigneeId;
 
     const snapshot = task.toJSON();
-    const diff = this.diffChanges(snapshot, changes);
-    const patch = task.applyChanges(changes, this.clock());
-    // Changing status through an edit moves the card to the end of the new column.
+    // A column edit always lands as a (key, category) pair: a key carries its own bucket, and a
+    // legacy category-only edit resolves to that category's own column so the two never drift.
+    const resolved: TaskChanges =
+      changes.statusKey !== undefined || changes.status !== undefined
+        ? {
+            ...changes,
+            ...(await this.columnPatch(task.projectId, changes.statusKey, changes.status)),
+          }
+        : changes;
+    const diff = [
+      ...this.diffAssignees(previousAssignees, nextAssignees),
+      ...this.diffChanges(snapshot, resolved),
+    ];
+    const patch = task.applyChanges(resolved, this.clock());
+    // Changing column through an edit moves the card to the end of the new column.
     // Compare against the snapshot — applyChanges mutates the entity in place.
-    if (changes.status !== undefined && changes.status !== snapshot.status) {
-      const last = await this.tasks.lastPosition(task.projectId, task.parentId, changes.status);
+    if (resolved.statusKey !== undefined && resolved.statusKey !== snapshot.statusKey) {
+      const last = await this.tasks.lastPosition(task.projectId, task.parentId, resolved.statusKey);
       patch.position = (last ?? 0) + POSITION_STEP;
     }
-    const updated = await this.tasks.update(taskId, patch);
-    const assigneeChanged = changes.assigneeId != null && changes.assigneeId !== snapshot.assigneeId;
+    let updated = await this.tasks.update(taskId, patch);
+    if (nextAssignees !== undefined) updated = await this.tasks.setAssignees(taskId, nextAssignees);
+
+    // Only people who were not on the task before hear about it (the actor is never notified).
+    const added = nextAssignees?.filter((id) => !previousAssignees.includes(id)) ?? [];
     await this.fire({
       actorId: userId,
       projectId: updated.projectId,
       taskId: updated.id,
       kind: 'updated',
       changes: diff,
-      ...(assigneeChanged && { notifyUserIds: [changes.assigneeId!] }),
+      ...(added.length > 0 && { notifyUserIds: added }),
     });
     return updated;
   }
@@ -127,20 +222,33 @@ export class TaskService {
     const task = await this.load(taskId);
     await this.access.assertRole(task.projectId, userId, 'MEMBER');
 
-    let position = await this.computePosition(task, input);
+    const column = await this.resolveColumn(task.projectId, input.statusKey);
+    let position = await this.computePosition(task, { ...input, statusKey: column.key });
     if (position === null) {
-      await this.tasks.rebalance(task.projectId, task.parentId, input.status);
-      position = (await this.computePosition(task, input)) ?? POSITION_STEP;
+      await this.tasks.rebalance(task.projectId, task.parentId, column.key);
+      position =
+        (await this.computePosition(task, { ...input, statusKey: column.key })) ?? POSITION_STEP;
     }
-    const previousStatus = task.status; // applyChanges mutates the entity in place
-    const patch = task.applyChanges({ status: input.status }, this.clock());
-    const moved = await this.tasks.update(taskId, { ...patch, status: input.status, position });
+    const previous = task.toJSON(); // applyChanges mutates the entity in place
+    const patch = task.applyChanges(
+      { statusKey: column.key, status: column.category },
+      this.clock(),
+    );
+    const moved = await this.tasks.update(taskId, {
+      ...patch,
+      statusKey: column.key,
+      status: column.category,
+      position,
+    });
     await this.fire({
       actorId: userId,
       projectId: moved.projectId,
       taskId: moved.id,
       kind: 'moved',
-      changes: [{ field: 'status', oldValue: previousStatus, newValue: input.status }],
+      changes: [
+        { field: 'statusKey', oldValue: previous.statusKey, newValue: column.key },
+        { field: 'status', oldValue: previous.status, newValue: column.category },
+      ],
     });
     return moved;
   }
@@ -220,6 +328,28 @@ export class TaskService {
     }));
   }
 
+  /**
+   * Ownership diff: one activity row describing the whole assignee set, old → new.
+   * Values are comma-joined user ids; the client resolves them to names.
+   */
+  private diffAssignees(before: number[], after?: number[]): TaskFieldChange[] {
+    if (!after) return [];
+    const same = before.length === after.length && before.every((id, i) => id === after[i]);
+    if (same) return [];
+    const value = (ids: number[]) => (ids.length === 0 ? null : ids.join(', '));
+    return [{ field: 'assignees', oldValue: value(before), newValue: value(after) }];
+  }
+
+  /**
+   * Validates an assignee set: unknown ids and non-members are rejected, duplicates collapse.
+   * Order is preserved because the first id becomes the lead.
+   */
+  private async assertAssignees(projectId: number, userIds: number[]): Promise<number[]> {
+    const unique = [...new Set(userIds)];
+    for (const id of unique) await this.assertAssignable(projectId, id);
+    return unique;
+  }
+
   private async load(taskId: number): Promise<Task> {
     const task = await this.tasks.findById(taskId);
     if (!task) throw taskNotFound();
@@ -250,7 +380,12 @@ export class TaskService {
     const byId = new Map<number, PositionInfo>(neighbours.map((n) => [n.id, n]));
     for (const id of ids) {
       const n = byId.get(id);
-      if (!n || n.projectId !== task.projectId || n.parentId !== task.parentId || n.status !== input.status) {
+      if (
+        !n ||
+        n.projectId !== task.projectId ||
+        n.parentId !== task.parentId ||
+        n.statusKey !== input.statusKey
+      ) {
         throw new ValidationError(null, 'Neighbour tasks must be in the target column');
       }
     }
@@ -258,9 +393,58 @@ export class TaskService {
     const after = input.afterId !== undefined ? byId.get(input.afterId)!.position : undefined;
 
     if (before === undefined && after === undefined) {
-      const last = await this.tasks.lastPosition(task.projectId, task.parentId, input.status);
+      const last = await this.tasks.lastPosition(task.projectId, task.parentId, input.statusKey);
       return (last ?? 0) + POSITION_STEP;
     }
     return positionBetween(before, after);
+  }
+
+  /**
+   * Maps whatever the caller sent onto a real column of the project.
+   *
+   * A key wins over a category; a category (the legacy `status` field, bulk edits) resolves to
+   * that category's own column. Unknown keys are a validation error, never a silent default —
+   * a typo must not quietly drop a card into the first column.
+   */
+  /** `{ statusKey, status }` for the API — the pair every write is normalised to. */
+  private async columnPatch(
+    projectId: number,
+    key?: string,
+    category?: TaskStatus,
+  ): Promise<{ statusKey: string; status: TaskStatus }> {
+    const column = await this.resolveColumn(projectId, key, category);
+    return { statusKey: column.key, status: column.category };
+  }
+
+  private async resolveColumn(
+    projectId: number,
+    key?: string,
+    category?: TaskStatus,
+  ): Promise<{ key: string; category: TaskStatus }> {
+    if (key !== undefined) {
+      const column = await this.ensureColumns(projectId, key);
+      if (!column) throw new ValidationError(null, `Unknown status "${key}" for this project`);
+      return { key: column.key, category: column.category };
+    }
+    if (category !== undefined) {
+      const resolved = await this.statuses.keyForCategory(projectId, category);
+      return { key: resolved, category };
+    }
+    await this.statuses.ensureDefaults(projectId);
+    const [first] = await this.statuses.ordered(projectId);
+    return first
+      ? { key: first.key, category: first.category }
+      : { key: 'TODO', category: 'TODO' };
+  }
+
+  /**
+   * Resolves a key, seeding the built-in columns once when a project somehow has none (rows
+   * written before this feature, or a project created outside the repository).
+   */
+  private async ensureColumns(projectId: number, key: string): Promise<StatusView | null> {
+    const found = await this.statuses.resolve(projectId, key);
+    if (found) return found;
+    await this.statuses.ensureDefaults(projectId);
+    return this.statuses.resolve(projectId, key);
   }
 }

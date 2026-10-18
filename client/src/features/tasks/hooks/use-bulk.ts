@@ -22,7 +22,15 @@ export function useBulkUpdate(projectId: number) {
   return useMutation({
     mutationFn: async (input: {
       ids: number[];
-      patch: { status?: string; priority?: string; assigneeId?: number | null; tags?: string[] };
+      patch: {
+        /** Target workflow column (`ProjectStatus.key`). */
+        statusKey?: string;
+        /** Category-level alias ("mark done" without knowing the project's column keys). */
+        status?: string;
+        priority?: string;
+        assigneeId?: number | null;
+        tags?: string[];
+      };
     }): Promise<BulkResult> =>
       (await apiClient.post<BulkResult>(`/projects/${projectId}/tasks/bulk`, input)).data,
     onSuccess: () => {

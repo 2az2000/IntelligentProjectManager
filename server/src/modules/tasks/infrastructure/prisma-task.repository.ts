@@ -1,7 +1,7 @@
 import { Prisma, type Task as TaskRow } from '@prisma/client';
 import type { Db } from '../../../shared/db/prisma';
 import { POSITION_STEP } from '../domain/position';
-import { Task, type TaskProps, type TaskStatus, type ValidNewTask } from '../domain/task.entity';
+import { Task, type TaskProps, type ValidNewTask } from '../domain/task.entity';
 import type {
   AssignedTaskFilters,
   PositionInfo,
@@ -18,6 +18,8 @@ const viewInclude = {
   project: { select: { id: true, name: true } },
   author: userSummary,
   assignee: userSummary,
+  // Stable order so the lead-then-co-assignees list does not shuffle between requests.
+  collaborators: { select: { userId: true, user: userSummary }, orderBy: { id: 'asc' } },
   subtasks: { where: { deletedAt: null }, select: { status: true } },
   _count: { select: { comments: { where: { deletedAt: null } } } },
 } satisfies Prisma.TaskInclude;
@@ -31,6 +33,7 @@ const toProps = (row: TaskRow): TaskProps => ({
   title: row.title,
   description: row.description,
   status: row.status,
+  statusKey: row.statusKey,
   priority: row.priority,
   position: row.position,
   tags: row.tags,
@@ -51,21 +54,31 @@ const toView = (row: ViewRow): TaskView => ({
   project: row.project,
   author: row.author,
   assignee: row.assignee,
+  // Lead first, then the co-assignees — a lead who also has a co-assignee row is listed once.
+  assignees: [
+    ...(row.assignee ? [row.assignee] : []),
+    ...row.collaborators.map((c) => c.user).filter((u) => u.id !== row.assignee?.id),
+  ],
   subtaskCount: row.subtasks.length,
   doneSubtaskCount: row.subtasks.filter((s) => s.status === 'DONE').length,
   commentCount: row._count.comments,
 });
 
+/** Tasks that involve the user: they own the task or share it as a co-assignee. */
+const involving = (userId: number): Prisma.TaskWhereInput => ({
+  OR: [{ assigneeId: userId }, { collaborators: { some: { userId } } }],
+});
+
 /** Only live tasks of live projects. */
 const alive = { deletedAt: null, project: { deletedAt: null } } satisfies Prisma.TaskWhereInput;
 
-/** Siblings: same parent; top-level columns are additionally split by status. */
-const siblingsWhere = (projectId: number, parentId: number | null, status: TaskStatus) =>
+/** Siblings: same parent; top-level columns are additionally split by workflow column. */
+const siblingsWhere = (projectId: number, parentId: number | null, statusKey: string) =>
   ({
     projectId,
     parentId,
     deletedAt: null,
-    ...(parentId === null ? { status } : {}),
+    ...(parentId === null ? { statusKey } : {}),
   }) satisfies Prisma.TaskWhereInput;
 
 export class PrismaTaskRepository implements TaskRepository {
@@ -104,12 +117,14 @@ export class PrismaTaskRepository implements TaskRepository {
         ...alive,
         parentId: filters.parentId ?? null,
         status: filters.status,
+        statusKey: filters.statusKey,
         priority: filters.priority,
-        assigneeId: filters.assigneeId,
+        // Filtering by a person means "tasks they are on" — lead or co-assignee.
+        ...(filters.assigneeId !== undefined ? involving(filters.assigneeId) : {}),
         ...(filters.search ? { title: { contains: filters.search, mode: 'insensitive' } } : {}),
       },
       include: viewInclude,
-      orderBy: [{ status: 'asc' }, { position: 'asc' }, { id: 'asc' }],
+      orderBy: [{ statusKey: 'asc' }, { position: 'asc' }, { id: 'asc' }],
     });
     return rows.map(toView);
   }
@@ -123,7 +138,7 @@ export class PrismaTaskRepository implements TaskRepository {
       where: {
         ...alive,
         projectId: { in: projectIds },
-        ...(filters.anyAssignee ? {} : { assigneeId: userId }),
+        ...(filters.anyAssignee ? {} : involving(userId)),
         ...(filters.includeDone ? {} : { status: { not: 'DONE' } }),
         ...(filters.dueFrom || filters.dueTo
           ? { dueDate: { gte: filters.dueFrom, lte: filters.dueTo } }
@@ -177,10 +192,10 @@ export class PrismaTaskRepository implements TaskRepository {
   async lastPosition(
     projectId: number,
     parentId: number | null,
-    status: TaskStatus,
+    statusKey: string,
   ): Promise<number | undefined> {
     const { _max } = await this.db.task.aggregate({
-      where: siblingsWhere(projectId, parentId, status),
+      where: siblingsWhere(projectId, parentId, statusKey),
       _max: { position: true },
     });
     return _max.position ?? undefined;
@@ -190,13 +205,46 @@ export class PrismaTaskRepository implements TaskRepository {
     if (ids.length === 0) return Promise.resolve([]);
     return this.db.task.findMany({
       where: { id: { in: ids }, deletedAt: null },
-      select: { id: true, projectId: true, parentId: true, status: true, position: true },
+      select: { id: true, projectId: true, parentId: true, statusKey: true, position: true },
     });
   }
 
-  async rebalance(projectId: number, parentId: number | null, status: TaskStatus): Promise<void> {
+  async assigneeSet(taskId: number): Promise<number[]> {
+    const row = await this.db.task.findUnique({
+      where: { id: taskId },
+      select: {
+        assigneeId: true,
+        collaborators: { select: { userId: true }, orderBy: { id: 'asc' } },
+      },
+    });
+    if (!row) return [];
+    return [
+      ...(row.assigneeId === null ? [] : [row.assigneeId]),
+      ...row.collaborators.map((c) => c.userId).filter((id) => id !== row.assigneeId),
+    ];
+  }
+
+  /** One write for the whole set: the lead lives on the task, everyone else in the join table. */
+  async setAssignees(taskId: number, userIds: number[]): Promise<TaskView> {
+    const [leadId, ...collaboratorIds] = userIds;
+    return toView(
+      await this.db.task.update({
+        where: { id: taskId },
+        data: {
+          assigneeId: leadId ?? null,
+          collaborators: {
+            deleteMany: {},
+            create: collaboratorIds.map((userId) => ({ userId })),
+          },
+        },
+        include: viewInclude,
+      }),
+    );
+  }
+
+  async rebalance(projectId: number, parentId: number | null, statusKey: string): Promise<void> {
     const statusFilter =
-      parentId === null ? Prisma.sql`AND "status" = ${status}::"TaskStatus"` : Prisma.empty;
+      parentId === null ? Prisma.sql`AND "statusKey" = ${statusKey}` : Prisma.empty;
     await this.db.$executeRaw`
       UPDATE "Task" t SET "position" = ranked.rn * ${POSITION_STEP}
       FROM (
@@ -211,9 +259,24 @@ export class PrismaTaskRepository implements TaskRepository {
   }
 
   async unassignUser(projectId: number, userId: number): Promise<void> {
-    await this.db.task.updateMany({
-      where: { projectId, assigneeId: userId },
-      data: { assigneeId: null },
+    await this.db.$transaction(async (tx) => {
+      // A member who left cannot stay a co-assignee anywhere in the project.
+      await tx.taskCollaborator.deleteMany({ where: { userId, task: { projectId } } });
+      // Where they were the lead, the task goes to the first remaining co-assignee (if any) —
+      // a task never keeps a lead who is not on the project.
+      const led = await tx.task.findMany({
+        where: { projectId, assigneeId: userId },
+        select: {
+          id: true,
+          collaborators: { select: { userId: true }, orderBy: { id: 'asc' }, take: 1 },
+        },
+      });
+      for (const task of led) {
+        await tx.task.update({
+          where: { id: task.id },
+          data: { assigneeId: task.collaborators[0]?.userId ?? null },
+        });
+      }
     });
   }
 }

@@ -5,7 +5,7 @@ import { useLocale, useTranslations } from 'next-intl';
 import { Badge } from '@/components/ui/badge';
 import { formatDate } from '@/lib/format';
 import { cn } from '@/lib/utils';
-import { isOverdue, type Task, type TaskPriority, type TaskStatus } from '../types';
+import { isOverdue, type Task, type TaskPriority } from '../types';
 
 const PRIORITY_ICON = { LOW: ArrowDown, MEDIUM: Minus, HIGH: ArrowUp, URGENT: Flame } as const;
 
@@ -19,11 +19,6 @@ export function PriorityBadge({ priority, className }: { priority: TaskPriority;
       {t(priority)}
     </Badge>
   );
-}
-
-export function StatusBadge({ status }: { status: TaskStatus }) {
-  const t = useTranslations('Tasks.status');
-  return <Badge variant="outline">{t(status)}</Badge>;
 }
 
 /** Due date with overdue emphasis (icon + text, not color alone). */

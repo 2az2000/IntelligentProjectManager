@@ -8,7 +8,10 @@ export interface TaskDto {
   parentId: number | null;
   title: string;
   description: string | null;
+  /** Analytics bucket of `statusKey` (TODO | IN_PROGRESS | REVIEW | DONE). */
   status: TaskStatus;
+  /** The project's workflow column the task sits in (`ProjectStatus.key`). */
+  statusKey: string;
   priority: TaskPriority;
   position: number;
   tags: string[];
@@ -18,7 +21,10 @@ export interface TaskDto {
   estimateHours: number | null;
   completedAt: string | null;
   author: UserSummary;
+  /** Lead assignee (`assigneeId`); null when nobody owns the task. */
   assignee: UserSummary | null;
+  /** Lead first, then co-assignees — everyone who shares the task. */
+  assignees: UserSummary[];
   subtaskCount: number;
   doneSubtaskCount: number;
   commentCount: number;
@@ -41,6 +47,7 @@ export function toTaskDto(task: TaskView): TaskDto {
     title: task.title,
     description: task.description,
     status: task.status,
+    statusKey: task.statusKey,
     priority: task.priority,
     position: task.position,
     tags: task.tags,
@@ -51,6 +58,7 @@ export function toTaskDto(task: TaskView): TaskDto {
     completedAt: iso(task.completedAt),
     author: task.author,
     assignee: task.assignee,
+    assignees: task.assignees,
     subtaskCount: task.subtaskCount,
     doneSubtaskCount: task.doneSubtaskCount,
     commentCount: task.commentCount,

@@ -14,7 +14,10 @@ export interface TaskProps {
   parentId: number | null;
   title: string;
   description: string | null;
+  /** Analytics bucket of the project column below (drives doneness, progress charts). */
   status: TaskStatus;
+  /** The project's workflow column (`ProjectStatus.key`) this task sits in. */
+  statusKey: string;
   priority: TaskPriority;
   position: number;
   tags: string[];
@@ -36,6 +39,7 @@ export interface TaskChanges {
   title?: string;
   description?: string | null;
   status?: TaskStatus;
+  statusKey?: string;
   priority?: TaskPriority;
   tags?: string[];
   points?: number | null;
@@ -52,8 +56,9 @@ export interface NewTask extends TaskChanges {
   parentId?: number | null;
 }
 
-export type ValidNewTask = Required<Omit<NewTask, 'status' | 'priority'>> & {
+export type ValidNewTask = Required<Omit<NewTask, 'status' | 'statusKey' | 'priority'>> & {
   status: TaskStatus;
+  statusKey: string;
   priority: TaskPriority;
   position: number;
   completedAt: Date | null;
@@ -79,6 +84,8 @@ export class Task {
     if (!title) throw new ValidationError(null, 'Task title is required');
     assertDates(input.startDate, input.dueDate);
     const status = input.status ?? 'TODO';
+    // A caller that only knows the category (imports, bulk edits) keeps the built-in column.
+    const statusKey = input.statusKey ?? status;
     return {
       projectId: input.projectId,
       authorId: input.authorId,
@@ -86,6 +93,7 @@ export class Task {
       title,
       description: input.description?.trim() || null,
       status,
+      statusKey,
       priority: input.priority ?? 'MEDIUM',
       position,
       tags: normalizeTags(input.tags ?? []),
@@ -113,6 +121,9 @@ export class Task {
   }
   get status() {
     return this.props.status;
+  }
+  get statusKey() {
+    return this.props.statusKey;
   }
   get authorId() {
     return this.props.authorId;

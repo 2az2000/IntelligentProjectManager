@@ -20,26 +20,37 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { DatePicker } from '@/components/shared/date-picker';
 import { useEnrichTask } from '@/features/ai';
+import { sortStatuses, type ProjectStatus } from '@/features/statuses';
 import { useErrorMessage } from '@/hooks/use-error-message';
 import { toDayIso } from '@/lib/calendar';
 import { taskApi } from '../api/task.api';
 import { useCreateTask } from '../hooks/use-tasks';
 import { taskFormSchema, type TaskFormValues } from '../schemas/task.schema';
 import type { UserSummary } from '../types';
-import { AssigneeSelect, PrioritySelect, StatusSelect } from './task-fields';
+import { AssigneePicker, PrioritySelect, StatusSelect } from './task-fields';
 
-const EMPTY: TaskFormValues = {
+/** A new task lands in the first column of the board, whatever that column is called. */
+const emptyFor = (statuses: ProjectStatus[]): TaskFormValues => ({
   title: '',
   description: '',
-  status: 'TODO',
+  statusKey: sortStatuses(statuses)[0]?.key ?? 'TODO',
   priority: 'MEDIUM',
-  assigneeId: null,
+  assigneeIds: [],
   dueDate: null,
   points: null,
   estimateHours: null,
-};
+});
 
-export function CreateTaskDialog({ projectId, members }: { projectId: number; members: UserSummary[] }) {
+export function CreateTaskDialog({
+  projectId,
+  members,
+  statuses,
+}: {
+  projectId: number;
+  members: UserSummary[];
+  /** The project's workflow columns — the first one is the default for a new task. */
+  statuses: ProjectStatus[];
+}) {
   const t = useTranslations('Tasks');
   const [open, setOpen] = useState(false);
   const toMessage = useErrorMessage();
@@ -48,10 +59,15 @@ export function CreateTaskDialog({ projectId, members }: { projectId: number; me
   /** AI-suggested subtasks (checkbox list) — applied after the parent task is created. */
   const [aiSubtasks, setAiSubtasks] = useState<{ title: string; selected: boolean }[]>([]);
 
-  const form = useForm<TaskFormValues>({ resolver: zodResolver(taskFormSchema), defaultValues: EMPTY });
+  const form = useForm<TaskFormValues>({
+    resolver: zodResolver(taskFormSchema),
+    defaultValues: emptyFor(statuses),
+  });
   const title = form.watch('title');
-  const assigneeId = form.watch('assigneeId');
-  const assigneeHint = enrich.data?.suggestedAssignees.find((a) => a.userId === assigneeId)?.reason;
+  const assigneeIds = form.watch('assigneeIds');
+  const assigneeHint = enrich.data?.suggestedAssignees.find((a) =>
+    assigneeIds.includes(a.userId),
+  )?.reason;
 
   /** AI completes the rough task: fills untouched fields and lists suggested subtasks. */
   const handleEnrich = () => {
@@ -63,11 +79,8 @@ export function CreateTaskDialog({ projectId, members }: { projectId: number; me
           if (!form.getValues('description') && preview.description) {
             form.setValue('description', preview.description);
           }
-          if (form.getValues('estimateHours') == null && preview.estimateHours != null) {
-            form.setValue('estimateHours', preview.estimateHours);
-          }
-          if (assigneeId == null && preview.suggestedAssignees[0]) {
-            form.setValue('assigneeId', preview.suggestedAssignees[0].userId);
+          if (assigneeIds.length === 0 && preview.suggestedAssignees[0]) {
+            form.setValue('assigneeIds', [preview.suggestedAssignees[0].userId]);
           }
           setAiSubtasks(preview.subtasks.map((subtask) => ({ title: subtask, selected: true })));
         },
@@ -81,10 +94,10 @@ export function CreateTaskDialog({ projectId, members }: { projectId: number; me
       const task = await createTask.mutateAsync({
         title: values.title,
         description: values.description || undefined,
-        status: values.status,
+        statusKey: values.statusKey,
         priority: values.priority,
-        assigneeId: values.assigneeId ?? undefined,
         dueDate: values.dueDate ? toDayIso(values.dueDate) : undefined,
+        assigneeIds: values.assigneeIds.length > 0 ? values.assigneeIds : undefined,
         points: values.points ?? undefined,
         estimateHours: values.estimateHours ?? undefined,
       });
@@ -93,7 +106,7 @@ export function CreateTaskDialog({ projectId, members }: { projectId: number; me
         await taskApi.create(projectId, { parentId: task.id, title: subtask.title.trim() });
       }
       toast.success(t('created'));
-      form.reset(EMPTY);
+      form.reset(emptyFor(statuses));
       setAiSubtasks([]);
       setOpen(false);
     } catch (error) {
@@ -194,11 +207,15 @@ export function CreateTaskDialog({ projectId, members }: { projectId: number; me
             <div className="grid grid-cols-2 gap-4">
               <FormField
                 control={form.control}
-                name="status"
+                name="statusKey"
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>{t('statusLabel')}</FormLabel>
-                    <StatusSelect value={field.value} onChange={field.onChange} />
+                    <StatusSelect
+                      value={field.value}
+                      statuses={statuses}
+                      onChange={field.onChange}
+                    />
                   </FormItem>
                 )}
               />
@@ -214,11 +231,11 @@ export function CreateTaskDialog({ projectId, members }: { projectId: number; me
               />
               <FormField
                 control={form.control}
-                name="assigneeId"
+                name="assigneeIds"
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>{t('assigneeLabel')}</FormLabel>
-                    <AssigneeSelect value={field.value} onChange={field.onChange} members={members} />
+                    <AssigneePicker value={field.value} onChange={field.onChange} members={members} />
                     {assigneeHint && (
                       <p className="text-xs text-muted-foreground">✨ {assigneeHint}</p>
                     )}

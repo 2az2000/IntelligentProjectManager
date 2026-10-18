@@ -4,11 +4,17 @@ import type { Comment, Task, TaskDetail, TaskPriority, TaskStatus } from '../typ
 export interface CreateTaskInput {
   title: string;
   description?: string;
+  /** Target workflow column of the project (`ProjectStatus.key`). */
+  statusKey?: string;
+  /** The column's analytics bucket — accepted as a legacy alias by the API. */
   status?: TaskStatus;
   priority?: TaskPriority;
   points?: number;
   estimateHours?: number;
+  /** Lead only. */
   assigneeId?: number;
+  /** Whole assignee set — the first id becomes the lead. Wins over `assigneeId`. */
+  assigneeIds?: number[];
   dueDate?: string;
   parentId?: number;
   tags?: string[];
@@ -17,18 +23,25 @@ export interface CreateTaskInput {
 export interface UpdateTaskInput {
   title?: string;
   description?: string | null;
+  statusKey?: string;
+  /** Category-level edit ("mark done" from a cross-project list) — resolves to that column. */
   status?: TaskStatus;
   priority?: TaskPriority;
   points?: number | null;
   estimateHours?: number | null;
   startDate?: string | null;
   dueDate?: string | null;
+  /** Lead only; `null` leaves the task with nobody on it. */
   assigneeId?: number | null;
+  /** Replaces the whole assignee set: first id leads, the rest become co-assignees. */
+  assigneeIds?: number[];
   tags?: string[];
 }
 
 export interface MoveTaskInput {
-  status: TaskStatus;
+  statusKey?: string;
+  /** Legacy alias: the built-in columns are spelled like their category. */
+  status?: TaskStatus;
   beforeId?: number;
   afterId?: number;
 }

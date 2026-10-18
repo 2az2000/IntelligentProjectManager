@@ -11,6 +11,7 @@ import {
   myTasksQuery,
   projectIdParams,
   taskIdParams,
+  toMoveInput,
   trashRestoreParams,
   updateTaskBody,
 } from './task.schemas';
@@ -76,7 +77,7 @@ export function createTasksRouter(tasks: TaskService): Router {
   router.post(
     '/:taskId/move',
     handle({ params: taskIdParams, body: moveTaskBody }, async ({ params, body }, req, res) => {
-      res.json(toTaskDto(await tasks.move(currentUserId(req), params.taskId, body)));
+      res.json(toTaskDto(await tasks.move(currentUserId(req), params.taskId, toMoveInput(body))));
     }),
   );
 

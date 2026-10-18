@@ -1,6 +1,7 @@
 import { prisma, type Db } from '../../../shared/db/prisma';
 import { ValidationError } from '../../../shared/errors';
 import type { ProjectRole } from '../../projects';
+import type { StatusLookup } from './task.service';
 
 /** Same contract as the tasks module. */
 export interface ProjectAccess {
@@ -9,6 +10,9 @@ export interface ProjectAccess {
 }
 
 export type BulkPatch = {
+  /** Target workflow column (`ProjectStatus.key`). */
+  statusKey?: string;
+  /** Legacy category spelling — resolves to that category's own column. */
   status?: 'TODO' | 'IN_PROGRESS' | 'REVIEW' | 'DONE';
   priority?: 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';
   assigneeId?: number | null;
@@ -25,6 +29,7 @@ export class BulkService {
   constructor(
     private readonly db: Db = prisma,
     private readonly access: ProjectAccess,
+    private readonly statuses: StatusLookup,
     private readonly clock: () => Date = () => new Date(),
   ) {}
 
@@ -67,16 +72,26 @@ export class BulkService {
       updatable.push(id);
     }
 
+    // A bulk status change is still a column change: key and category are written together.
+    const column =
+      input.patch.statusKey !== undefined || input.patch.status !== undefined
+        ? await this.resolveColumn(projectId, input.patch.statusKey, input.patch.status)
+        : undefined;
+
     const now = this.clock();
     if (updatable.length > 0) {
+      // "Unassign" clears the whole team: a lead-only reset would leave co-assignees behind.
+      if (input.patch.assigneeId === null) {
+        await this.db.taskCollaborator.deleteMany({ where: { taskId: { in: updatable } } });
+      }
       await this.db.task.updateMany({
         where: { id: { in: updatable }, projectId },
         data: {
-          ...(input.patch.status !== undefined ? { status: input.patch.status } : {}),
+          ...(column ? { statusKey: column.key, status: column.category } : {}),
           ...(input.patch.priority !== undefined ? { priority: input.patch.priority } : {}),
           ...(input.patch.assigneeId !== undefined ? { assigneeId: input.patch.assigneeId } : {}),
           ...(input.patch.tags !== undefined ? { tags: input.patch.tags } : {}),
-          ...(input.patch.status === 'DONE' ? { completedAt: now } : {}),
+          ...(column ? { completedAt: column.category === 'DONE' ? now : null } : {}),
           updatedAt: now,
         },
       });
@@ -91,12 +106,26 @@ export class BulkService {
     return { updated: updatable.length, skipped };
   }
 
-  /** §34 tasks without an owner in one project — the "who owns this?" report. */
+  /** §34 tasks nobody is on in one project — the "who owns this?" report. */
   async listUnassigned(userId: number, projectId: number) {
     await this.access.assertRole(projectId, userId, 'VIEWER');
     return this.db.task.findMany({
-      where: { projectId, deletedAt: null, parentId: null, assigneeId: null },
-      select: { id: true, title: true, status: true, priority: true, dueDate: true, createdAt: true },
+      where: {
+        projectId,
+        deletedAt: null,
+        parentId: null,
+        assigneeId: null,
+        collaborators: { none: {} },
+      },
+      select: {
+        id: true,
+        title: true,
+        status: true,
+        statusKey: true,
+        priority: true,
+        dueDate: true,
+        createdAt: true,
+      },
       orderBy: [{ priority: 'desc' }, { createdAt: 'asc' }],
       take: 100,
     });
@@ -111,12 +140,14 @@ export class BulkService {
         id: true,
         title: true,
         status: true,
+        statusKey: true,
         priority: true,
         tags: true,
         startDate: true,
         dueDate: true,
         estimateHours: true,
         assignee: { select: { name: true } },
+        collaborators: { select: { user: { select: { name: true } } }, orderBy: { id: 'asc' } },
       },
       orderBy: { position: 'asc' },
       take: 2000,
@@ -124,14 +155,35 @@ export class BulkService {
       rows.map((r) => ({
         id: r.id,
         title: r.title,
-        status: r.status,
+        status: r.statusKey,
         priority: r.priority,
         tags: r.tags,
         startDate: r.startDate,
         dueDate: r.dueDate,
         estimateHours: r.estimateHours,
-        assignee: r.assignee?.name ?? null,
+        // One CSV cell per task: the whole team, lead first.
+        assignee:
+          [r.assignee?.name, ...r.collaborators.map((c) => c.user.name)].filter(Boolean).join(' | ') ||
+          null,
       })),
     );
+  }
+
+  /** Same normalisation the task service uses: a key wins, a category resolves to its column. */
+  private async resolveColumn(
+    projectId: number,
+    key?: string,
+    category?: 'TODO' | 'IN_PROGRESS' | 'REVIEW' | 'DONE',
+  ): Promise<{ key: string; category: 'TODO' | 'IN_PROGRESS' | 'REVIEW' | 'DONE' }> {
+    if (key !== undefined) {
+      let column = await this.statuses.resolve(projectId, key);
+      if (!column) {
+        await this.statuses.ensureDefaults(projectId);
+        column = await this.statuses.resolve(projectId, key);
+      }
+      if (!column) throw new ValidationError(null, `Unknown status "${key}" for this project`);
+      return { key: column.key, category: column.category };
+    }
+    return { key: await this.statuses.keyForCategory(projectId, category!), category: category! };
   }
 }
