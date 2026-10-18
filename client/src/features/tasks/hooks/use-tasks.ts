@@ -80,12 +80,19 @@ export function useMoveTask(projectId: number) {
 
   return useMutation({
     mutationFn: ({ taskId, plan }: { taskId: number; plan: DropPlan }) =>
-      taskApi.move(taskId, { status: plan.status, beforeId: plan.beforeId, afterId: plan.afterId }),
+      taskApi.move(taskId, {
+        statusKey: plan.statusKey,
+        beforeId: plan.beforeId,
+        afterId: plan.afterId,
+      }),
     onMutate: async ({ taskId, plan }) => {
       await queryClient.cancelQueries({ queryKey });
       const previous = queryClient.getQueryData<Task[]>(queryKey);
+      // The category (`status`) lands with the server answer; the board groups by `statusKey`.
       queryClient.setQueryData<Task[]>(queryKey, (tasks) =>
-        tasks?.map((t) => (t.id === taskId ? { ...t, status: plan.status, position: plan.position } : t)),
+        tasks?.map((t) =>
+          t.id === taskId ? { ...t, statusKey: plan.statusKey, position: plan.position } : t,
+        ),
       );
       return { previous };
     },

@@ -3,6 +3,7 @@ import { render, screen, within } from '@testing-library/react';
 import type { PropsWithChildren } from 'react';
 import { describe, expect, it } from 'vitest';
 import { NextIntlClientProvider } from 'next-intl';
+import { FALLBACK_STATUSES } from '@/features/statuses';
 import { project, tasks as fixtures } from '@/test/handlers';
 import { KanbanBoard } from './kanban-board';
 import { applyFilters } from './board-filters';
@@ -25,7 +26,14 @@ function createWrapper() {
 describe('KanbanBoard', () => {
   it('renders the four columns with translated titles', () => {
     render(
-      <KanbanBoard projectId={project.id} tasks={fixtures} allTasks={fixtures} readOnly onOpen={() => {}} />,
+      <KanbanBoard
+        projectId={project.id}
+        statuses={FALLBACK_STATUSES}
+        tasks={fixtures}
+        allTasks={fixtures}
+        readOnly
+        onOpen={() => {}}
+      />,
       { wrapper: createWrapper() },
     );
 
@@ -37,7 +45,14 @@ describe('KanbanBoard', () => {
 
   it('places tasks in their status column with translated priority badge', () => {
     render(
-      <KanbanBoard projectId={project.id} tasks={fixtures} allTasks={fixtures} readOnly onOpen={() => {}} />,
+      <KanbanBoard
+        projectId={project.id}
+        statuses={FALLBACK_STATUSES}
+        tasks={fixtures}
+        allTasks={fixtures}
+        readOnly
+        onOpen={() => {}}
+      />,
       { wrapper: createWrapper() },
     );
 

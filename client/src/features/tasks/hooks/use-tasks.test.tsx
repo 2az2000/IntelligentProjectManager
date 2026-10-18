@@ -46,9 +46,13 @@ describe('useMoveTask (optimistic + rollback)', () => {
     queryClient.setQueryData(['tasks', 'project', 1], fixtures);
 
     // Server state after the move: the list endpoint returns the persisted task.
-    const movedOnServer = fixtures.map((t) => (t.id === 1 ? { ...t, status: 'DONE' as const, position: 2048 } : t));
+    const movedOnServer = fixtures.map((t) =>
+      t.id === 1 ? { ...t, status: 'DONE' as const, statusKey: 'DONE', position: 2048 } : t,
+    );
     server.use(
-      http.post(`${API}/tasks/1/move`, () => HttpResponse.json({ ...fixtures[0]!, status: 'DONE', position: 2048 })),
+      http.post(`${API}/tasks/1/move`, () =>
+        HttpResponse.json({ ...fixtures[0]!, status: 'DONE', statusKey: 'DONE', position: 2048 }),
+      ),
       http.get(`${API}/projects/1/tasks`, () => HttpResponse.json(movedOnServer)),
     );
 
@@ -57,13 +61,13 @@ describe('useMoveTask (optimistic + rollback)', () => {
     });
 
     act(() => {
-      result.current.mutate({ taskId: 1, plan: { status: 'DONE', afterId: 2, position: 1536 } });
+      result.current.mutate({ taskId: 1, plan: { statusKey: 'DONE', afterId: 2, position: 1536 } });
     });
 
     // Optimistic: visible in the cache immediately (onMutate ran), before the request resolves.
     await waitFor(() =>
-      expect(queryClient.getQueryData<{ id: number; status: string; position: number }[]>(['tasks', 'project', 1])?.find((t) => t.id === 1))
-        .toMatchObject({ status: 'DONE', position: 1536 }),
+      expect(queryClient.getQueryData<{ id: number; statusKey: string; position: number }[]>(['tasks', 'project', 1])?.find((t) => t.id === 1))
+        .toMatchObject({ statusKey: 'DONE', position: 1536 }),
     );
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
@@ -71,8 +75,8 @@ describe('useMoveTask (optimistic + rollback)', () => {
 
     // The mutation response (server truth for the moved task) merged into the detail-free list:
     // status stays DONE. Position is refreshed by the next stale refetch (staleTime in app code).
-    const after = queryClient.getQueryData<{ id: number; status: string; position: number }[]>(['tasks', 'project', 1])?.find((t) => t.id === 1);
-    expect(after).toMatchObject({ status: 'DONE' });
+    const after = queryClient.getQueryData<{ id: number; statusKey: string; position: number }[]>(['tasks', 'project', 1])?.find((t) => t.id === 1);
+    expect(after).toMatchObject({ statusKey: 'DONE' });
   });
 
   it('rolls back the cache when the request fails', async () => {
@@ -88,12 +92,12 @@ describe('useMoveTask (optimistic + rollback)', () => {
     });
 
     act(() => {
-      result.current.mutate({ taskId: 1, plan: { status: 'DONE', position: 1536 } });
+      result.current.mutate({ taskId: 1, plan: { statusKey: 'DONE', position: 1536 } });
     });
 
     await waitFor(() => expect(result.current.isError).toBe(true));
 
     const rolledBack = queryClient.getQueryData<typeof fixtures>(['tasks', 'project', 1]);
-    expect(rolledBack?.find((t) => t.id === 1)).toMatchObject({ status: 'TODO', position: 1024 });
+    expect(rolledBack?.find((t) => t.id === 1)).toMatchObject({ statusKey: 'TODO', position: 1024 });
   });
 });

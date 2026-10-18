@@ -9,6 +9,7 @@ import { ErrorState } from '@/components/shared/error-state';
 import { BoardSkeleton, TableSkeleton } from '@/components/shared/loading-skeletons';
 import { hasRole, useProject, useProjectMembers } from '@/features/projects';
 import { PresenceAvatars, useProjectSocket } from '@/features/realtime';
+import { FALLBACK_STATUSES, useProjectStatuses } from '@/features/statuses';
 import { useProjectTasks } from '../hooks/use-tasks';
 import { useTaskSheet } from '../hooks/use-task-sheet';
 import type { TaskFilters } from '../types';
@@ -25,6 +26,9 @@ export function ProjectTasks({ projectId, view }: { projectId: number; view: 'bo
   const { data: project } = useProject(projectId);
   const { data: members = [] } = useProjectMembers(projectId);
   const { data: tasks, isPending, isError, error, refetch } = useProjectTasks(projectId);
+  // The board's columns are the project's own statuses; the fallback keeps it renderable meanwhile.
+  const { data: projectStatuses } = useProjectStatuses(projectId);
+  const statuses = projectStatuses ?? FALLBACK_STATUSES;
 
   const canEdit = !!project && hasRole(project.myRole, 'MEMBER');
   const people = members.map((m) => m.user);
@@ -43,7 +47,9 @@ export function ProjectTasks({ projectId, view }: { projectId: number; view: 'bo
         <BoardFilters filters={filters} onChange={setFilters} members={people} />
         <div className="flex items-center gap-2">
           <PresenceAvatars projectId={projectId} />
-          {canEdit && <CreateTaskDialog projectId={projectId} members={assignable} />}
+          {canEdit && (
+            <CreateTaskDialog projectId={projectId} members={assignable} statuses={statuses} />
+          )}
         </div>
       </div>
 
@@ -52,6 +58,7 @@ export function ProjectTasks({ projectId, view }: { projectId: number; view: 'bo
       ) : view === 'board' ? (
         <KanbanBoard
           projectId={projectId}
+          statuses={statuses}
           tasks={visible}
           allTasks={tasks}
           readOnly={!canEdit}
@@ -62,7 +69,12 @@ export function ProjectTasks({ projectId, view }: { projectId: number; view: 'bo
       ) : (
         <Card className="py-0">
           <CardContent className="p-0">
-            <TaskTable tasks={visible} onOpen={openTask} projectId={canEdit ? projectId : undefined} />
+            <TaskTable
+              tasks={visible}
+              statuses={statuses}
+              onOpen={openTask}
+              projectId={canEdit ? projectId : undefined}
+            />
           </CardContent>
         </Card>
       )}
