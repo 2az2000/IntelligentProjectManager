@@ -2,6 +2,7 @@ import type { ProjectRole, TaskStatus } from '@prisma/client';
 import request from 'supertest';
 import type { App } from 'supertest/types';
 import { hashPassword } from '../../src/modules/auth';
+import { DEFAULT_STATUSES } from '../../src/modules/statuses';
 import { prisma } from './db';
 
 let seq = 0;
@@ -26,6 +27,8 @@ export async function createProject(ownerId: number, overrides: { name?: string 
       name: overrides.name ?? `Project ${next()}`,
       ownerId,
       members: { create: { userId: ownerId, role: 'OWNER' } },
+      // Mirrors the repository: a project never exists without its workflow columns.
+      statuses: { create: DEFAULT_STATUSES.map((status) => ({ ...status })) },
     },
   });
 }
@@ -39,6 +42,8 @@ export async function createTask(data: {
   authorId: number;
   title?: string;
   status?: TaskStatus;
+  /** Defaults to the stored status, mirroring what the service writes. */
+  statusKey?: string;
   position?: number;
   parentId?: number;
   assigneeId?: number;
@@ -52,6 +57,7 @@ export async function createTask(data: {
       authorId: data.authorId,
       title: data.title ?? `Task ${next()}`,
       status: data.status ?? 'TODO',
+      statusKey: data.statusKey ?? data.status ?? 'TODO',
       priority: 'MEDIUM',
       position: data.position ?? next() * 1024,
       parentId: data.parentId,

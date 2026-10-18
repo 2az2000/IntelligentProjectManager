@@ -3,8 +3,10 @@ import type { ActivityEntry } from '@/features/activity/types';
 import type { Attachment } from '@/features/attachments/types';
 import type { ProjectDoc, TaskEnrichment } from '@/features/ai/types';
 import type { Notification } from '@/features/notifications/types';
-import type { Project, ProjectMember, Teammate } from '@/features/projects/types';
+import type { Project, ProjectMember, Teammate, TeamWorkload } from '@/features/projects/types';
 import type { ScheduleResult } from '@/features/scheduling/types';
+import { FALLBACK_STATUSES, type ProjectStatus } from '@/features/statuses';
+import type { Label } from '@/features/labels/types';
 import type { BurndownResult, ForecastResult, RiskResult } from '@/features/scheduling/analytics-types';
 import type { Task } from '@/features/tasks/types';
 
@@ -51,7 +53,54 @@ export const teammate: Teammate = {
   overdueTasks: 0,
 };
 
-export const task = (overrides: Partial<Task>): Task => ({
+/** §Imp #4: two heat rows — sara is over-allocated this week, admin has a light week. */
+export const teamWorkload: TeamWorkload = {
+  capacityHoursPerWeek: 40,
+  weeks: [
+    { start: '2026-10-10T00:00:00.000Z', end: '2026-10-17T00:00:00.000Z' },
+    { start: '2026-10-17T00:00:00.000Z', end: '2026-10-24T00:00:00.000Z' },
+  ],
+  members: [
+    {
+      user: saraWithEmail,
+      capacityHoursPerWeek: null,
+      cells: [
+        {
+          hours: 44,
+          tasks: [
+            {
+              id: 11,
+              title: 'Implement payment API',
+              projectId: 1,
+              projectName: 'Website Redesign',
+              estimateHours: 44,
+              dueDate: '2026-10-20T00:00:00.000Z',
+            },
+          ],
+        },
+        { hours: 12, tasks: [] },
+      ],
+    },
+    {
+      user: { id: 1, name: 'Amir', avatarUrl: null, email: 'admin@example.com' },
+      capacityHoursPerWeek: null,
+      cells: [
+        { hours: 8, tasks: [{ id: 12, title: 'Review copy', projectId: 1, projectName: 'Website Redesign', estimateHours: 8, dueDate: null }] },
+        { hours: 0, tasks: [] },
+      ],
+    },
+  ],
+};
+
+/** Every project ships with the four built-in columns unless a test overrides them. */
+export const projectStatuses: ProjectStatus[] = FALLBACK_STATUSES;
+
+export const projectLabels: Label[] = [
+  { id: 1, name: 'Backend', color: '#2563eb', icon: 'server' },
+  { id: 2, name: 'Security', color: '#dc2626', icon: 'shield' },
+];
+
+const taskDefaults: Task = {
   id: 0,
   projectId: 1,
   project: { id: 1, name: project.name },
@@ -59,6 +108,7 @@ export const task = (overrides: Partial<Task>): Task => ({
   title: '',
   description: null,
   status: 'TODO',
+  statusKey: 'TODO',
   priority: 'MEDIUM',
   position: 1024,
   tags: [],
@@ -69,13 +119,23 @@ export const task = (overrides: Partial<Task>): Task => ({
   completedAt: null,
   author: admin,
   assignee: null,
+  assignees: [],
   subtaskCount: 0,
   doneSubtaskCount: 0,
   commentCount: 0,
   createdAt: now,
   updatedAt: now,
-  ...overrides,
-});
+};
+
+/**
+ * `statusKey` names the workflow column a task sits in; `status` is the analytics bucket the
+ * server derives from that column. Deriving the key here keeps a fixture that only sets
+ * `status` out of the wrong column.
+ */
+export const task = (overrides: Partial<Task>): Task => {
+  const merged: Task = { ...taskDefaults, ...overrides };
+  return overrides.statusKey === undefined ? { ...merged, statusKey: merged.status } : merged;
+};
 
 export const tasks: Task[] = [
   task({
@@ -88,6 +148,8 @@ export const tasks: Task[] = [
     dueDate: '2026-10-01T00:00:00.000Z',
     tags: ['design'],
     assignee: admin,
+    // Admin leads, sara shares it — the multi-assignee shape in every fixture.
+    assignees: [admin, sara],
   }),
   task({
     id: 2,
@@ -97,6 +159,7 @@ export const tasks: Task[] = [
     points: 3,
     completedAt: '2026-09-21T08:00:00.000Z',
     assignee: sara,
+    assignees: [sara],
   }),
 ];
 
@@ -225,6 +288,8 @@ export const handlers = [
   http.get(`${API}/projects/1`, () => HttpResponse.json(project)),
   http.get(`${API}/projects/templates`, () => HttpResponse.json([softwareLaunchTemplate])),
   http.get(`${API}/projects/1/members`, () => HttpResponse.json([projectMember])),
+  http.get(`${API}/projects/1/labels`, () => HttpResponse.json(projectLabels)),
+  http.get(`${API}/projects/1/statuses`, () => HttpResponse.json(projectStatuses)),
   http.get(`${API}/projects/1/tasks`, () => HttpResponse.json(tasks)),
   http.get(`${API}/projects/1/tasks/trash`, () => HttpResponse.json([])),
   http.post(`${API}/projects/1/tasks/trash/:taskId/restore`, ({ params }) =>
@@ -244,6 +309,7 @@ export const handlers = [
   ),
   http.delete(`${API}/projects/1/dependencies/:predecessorId/:successorId`, () => new HttpResponse(null, { status: 204 })),
   http.get(`${API}/me/team`, () => HttpResponse.json([teammate])),
+  http.get(`${API}/me/team/workload`, () => HttpResponse.json(teamWorkload)),
 
   // ---- phase 5: notifications, activity, attachments ------------------------------------
   http.get(`${API}/notifications`, () => HttpResponse.json(notifications)),
@@ -276,7 +342,6 @@ export const handlers = [
       description: 'AI-written description for the rough task.',
       subtasks: ['Draft the outline', 'Implement the design', 'Review and polish'],
       suggestedAssignees: [{ userId: 2, name: sara.name, reason: 'Has design experience' }],
-      estimateHours: 8,
     } satisfies TaskEnrichment),
   ),
   http.post(`${API}/projects/1/ai/project-doc`, () =>

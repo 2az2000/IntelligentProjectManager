@@ -103,6 +103,30 @@ describe('activity log', () => {
     expect(moved[0]).toMatchObject({ field: 'status', oldValue: 'IN_PROGRESS', newValue: 'REVIEW' });
   });
 
+  it('reports description and label edits, so an edit is never just "updated the task"', async () => {
+    const { project, agent } = await setup();
+    const created = await agent.post(`/projects/${project.id}/tasks`).send({ title: 'A' });
+    const taskId = created.body.id;
+
+    await agent
+      .patch(`/tasks/${taskId}`)
+      .send({ description: 'Wire the billing webhook', tags: ['backend', 'billing'] });
+
+    const activity = await agent.get(`/tasks/${taskId}/activity`);
+    const updated = activity.body.filter((row: { action: string }) => row.action === 'updated');
+    expect(updated.find((row: { field: string }) => row.field === 'description')).toMatchObject({
+      oldValue: null,
+      newValue: 'Wire the billing webhook',
+    });
+    const tagsRow = updated.find((row: { field: string }) => row.field === 'tags');
+    expect(tagsRow).toBeDefined();
+    expect(String(tagsRow.newValue)).toContain('billing');
+
+    // The report is an audit trail: every row names who did it and when.
+    expect(activity.body[0].actor).toMatchObject({ id: expect.any(Number), name: expect.any(String) });
+    expect(new Date(activity.body[0].createdAt).getTime()).not.toBeNaN();
+  });
+
   it('is member-only (viewers read it, outsiders get 403)', async () => {
     const { owner, project, agent } = await setup();
     const task = await createTask({ projectId: project.id, authorId: owner.id });
