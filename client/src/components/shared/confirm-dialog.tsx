@@ -26,7 +26,8 @@ export function ConfirmDialog({
 }: {
   trigger: ReactNode;
   title: string;
-  description?: string;
+  /** Text, or a small block when the confirmation needs an extra choice. */
+  description?: ReactNode;
   confirmLabel: string;
   onConfirm: () => void;
   destructive?: boolean;

@@ -99,8 +99,10 @@ export function DatePicker({
           </Button>
         </div>
         <div className="grid grid-cols-7 gap-1 text-center text-xs text-muted-foreground">
-          {weekdayLabels(weeks[0] ?? [], locale).map((label) => (
-            <span key={label}>{label}</span>
+          {weekdayLabels(weeks[0] ?? [], locale, 'narrow').map((label, index) => (
+            <span key={index} className="py-1">
+              {label}
+            </span>
           ))}
         </div>
         <div className="mt-1 grid grid-cols-7 gap-1">
@@ -117,9 +119,10 @@ export function DatePicker({
                 className={cn(
                   'h-8 rounded-md text-sm transition-colors hover:bg-accent',
                   !isSameMonth(day, month, system) && 'text-muted-foreground/50',
-                  isSameDay(day, today) && 'font-bold text-primary',
+                  isSameDay(day, today) && 'bg-accent font-bold ring-1 ring-primary ring-inset',
                   selected && 'bg-primary text-primary-foreground hover:bg-primary/90',
                 )}
+                aria-current={isSameDay(day, today) ? 'date' : undefined}
               >
                 {dayLabel(day, locale)}
               </button>

@@ -1,17 +1,24 @@
 'use client';
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { Loader2, Sparkles } from 'lucide-react';
+import { Camera, ImageUp, Loader2, Trash2 } from 'lucide-react';
 import { useLocale, useTranslations } from 'next-intl';
-import { useTheme } from 'next-themes';
+import { useTheme, type Theme } from '@/lib/theme';
 import { toast } from 'sonner';
 import { z } from 'zod';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -22,14 +29,13 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { UserAvatar } from '@/components/shared/user-avatar';
-import { useProjectDoc } from '@/features/ai';
 import { useCurrentUser, type User } from '@/features/auth';
-import { useProjects } from '@/features/projects';
-import { useChangePassword, useUpdateProfile } from '@/features/users';
+import { useChangePassword, useUpdateProfile, useUploadAvatar } from '@/features/users';
 import { useErrorMessage } from '@/hooks/use-error-message';
 import { usePathname, useRouter } from '@/i18n/navigation';
 import { routing, type Locale } from '@/i18n/routing';
 import { normalizeError } from '@/lib/api-client';
+import { cn } from '@/lib/utils';
 
 const LANGUAGE_NAMES: Record<Locale, string> = { fa: 'فارسی', en: 'English' };
 const THEMES = ['light', 'dark', 'system'] as const;
@@ -43,25 +49,66 @@ export function SettingsPanel() {
       <PreferencesCard />
       <NotificationsCard notifyEmail={user.notifyEmail ?? true} />
       <PasswordCard />
-      <AiProjectDocCard />
     </div>
   );
 }
 
+/** Client-side mirror of the server's avatar limit; the API enforces it too. */
+const AVATAR_MAX_MB = 2;
+
 const profileSchema = z.object({
   name: z.string().trim().min(1, 'required').max(80, 'tooLong'),
-  avatarUrl: z.union([z.literal(''), z.url({ protocol: /^https?$/, error: 'invalidUrl' })]),
+  // Either a pasted https URL or a path minted by our own upload endpoint (/avatars/…).
+  avatarUrl: z.union([
+    z.literal(''),
+    z.url({ protocol: /^https?$/, error: 'invalidUrl' }),
+    z.string().regex(/^\/avatars\/[\w-]+\.[a-z]+$/i, 'invalidUrl'),
+  ]),
 });
 
 function ProfileCard({ user }: { user: User }) {
   const t = useTranslations('Settings');
   const toMessage = useErrorMessage();
   const update = useUpdateProfile();
+  const uploadAvatar = useUploadAvatar();
+  const fileInput = useRef<HTMLInputElement>(null);
+  const cameraInput = useRef<HTMLInputElement>(null);
+  const [dragging, setDragging] = useState(false);
   const form = useForm<z.infer<typeof profileSchema>>({
     resolver: zodResolver(profileSchema),
     defaultValues: { name: user.name, avatarUrl: user.avatarUrl ?? '' },
   });
-  const preview = { name: form.watch('name') || user.name, avatarUrl: form.watch('avatarUrl') || null };
+  const preview = {
+    name: form.watch('name') || user.name,
+    avatarUrl: form.watch('avatarUrl') || null,
+  };
+
+  const onFilePicked = (file: File | undefined) => {
+    if (!file) return;
+    if (file.size > AVATAR_MAX_MB * 1024 * 1024) {
+      toast.error(t('avatarTooLarge'));
+      return;
+    }
+    uploadAvatar.mutate(file, {
+      onSuccess: (next) => {
+        form.setValue('avatarUrl', next.avatarUrl ?? '');
+        toast.success(t('avatarUploaded'));
+      },
+      onError: (e) => toast.error(toMessage(e)),
+    });
+  };
+
+  const onRemoveAvatar = () =>
+    update.mutate(
+      { avatarUrl: null },
+      {
+        onSuccess: () => {
+          form.setValue('avatarUrl', '');
+          toast.success(t('saved'));
+        },
+        onError: (e) => toast.error(toMessage(e)),
+      },
+    );
 
   return (
     <Card>
@@ -77,14 +124,101 @@ function ProfileCard({ user }: { user: User }) {
             onSubmit={form.handleSubmit((values) =>
               update.mutate(
                 { name: values.name, avatarUrl: values.avatarUrl || null },
-                { onSuccess: () => toast.success(t('saved')), onError: (e) => toast.error(toMessage(e)) },
+                {
+                  onSuccess: () => toast.success(t('saved')),
+                  onError: (e) => toast.error(toMessage(e)),
+                },
               ),
             )}
           >
-            <div className="flex items-center gap-4">
+            <div
+              className={cn(
+                'flex items-center gap-4 rounded-lg border border-transparent p-2 transition-colors',
+                dragging && 'border-primary bg-accent/50 border-dashed',
+              )}
+              onDragOver={(event) => {
+                if (!event.dataTransfer.types.includes('Files')) return;
+                event.preventDefault();
+                setDragging(true);
+              }}
+              onDragLeave={() => setDragging(false)}
+              onDrop={(event) => {
+                event.preventDefault();
+                setDragging(false);
+                onFilePicked(event.dataTransfer.files?.[0]);
+              }}
+            >
               <UserAvatar user={preview} className="size-14 text-base" />
-              <div className="text-sm text-muted-foreground" dir="ltr">
-                {user.email}
+              <div className="flex flex-col gap-1.5">
+                <div className="text-muted-foreground text-sm" dir="ltr">
+                  {user.email}
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <input
+                    ref={fileInput}
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp,image/gif"
+                    className="hidden"
+                    aria-label={t('avatarUpload')}
+                    onChange={(event) => {
+                      onFilePicked(event.target.files?.[0]);
+                      event.target.value = ''; // let the user re-pick the same file
+                    }}
+                  />
+                  {/* Phones expose the camera under `capture` — an extra path besides picking a file. */}
+                  <input
+                    ref={cameraInput}
+                    type="file"
+                    accept="image/*"
+                    capture="user"
+                    className="hidden"
+                    aria-label={t('avatarCamera')}
+                    onChange={(event) => {
+                      onFilePicked(event.target.files?.[0]);
+                      event.target.value = '';
+                    }}
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="gap-1.5"
+                    disabled={uploadAvatar.isPending}
+                    onClick={() => fileInput.current?.click()}
+                  >
+                    {uploadAvatar.isPending ? (
+                      <Loader2 className="size-4 animate-spin" />
+                    ) : (
+                      <ImageUp className="size-4" aria-hidden />
+                    )}
+                    {t('avatarUpload')}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="gap-1.5"
+                    disabled={uploadAvatar.isPending}
+                    onClick={() => cameraInput.current?.click()}
+                  >
+                    <Camera className="size-4" aria-hidden />
+                    {t('avatarCamera')}
+                  </Button>
+                  {user.avatarUrl && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="text-muted-foreground gap-1.5"
+                      disabled={update.isPending}
+                      onClick={onRemoveAvatar}
+                    >
+                      <Trash2 className="size-4" aria-hidden />
+                      {t('avatarRemove')}
+                    </Button>
+                  )}
+                </div>
+                <p className="text-muted-foreground text-xs">{t('avatarDropHint')}</p>
               </div>
             </div>
             <FormField
@@ -144,7 +278,7 @@ function PreferencesCard() {
         <div className="flex items-center justify-between gap-4">
           <div className="flex flex-col gap-0.5">
             <Label htmlFor="language">{t('language')}</Label>
-            <p className="text-sm text-muted-foreground">{t('languageDescription')}</p>
+            <p className="text-muted-foreground text-sm">{t('languageDescription')}</p>
           </div>
           <Select
             value={locale}
@@ -170,12 +304,12 @@ function PreferencesCard() {
         <div className="flex items-center justify-between gap-4">
           <div className="flex flex-col gap-0.5">
             <Label htmlFor="theme">{t('theme')}</Label>
-            <p className="text-sm text-muted-foreground">{t('themeDescription')}</p>
+            <p className="text-muted-foreground text-sm">{t('themeDescription')}</p>
           </div>
           <Select
-            value={theme ?? 'system'}
+            value={theme}
             onValueChange={(next) => {
-              setTheme(next);
+              setTheme(next as Theme);
               update.mutate({ theme: next as (typeof THEMES)[number] }, { onError });
             }}
           >
@@ -223,13 +357,18 @@ function NotificationsCard({ notifyEmail }: { notifyEmail: boolean }) {
             onCheckedChange={(checked) =>
               update.mutate(
                 { notifyEmail: checked === true },
-                { onSuccess: () => toast.success(t('saved')), onError: (e) => toast.error(toMessage(e)) },
+                {
+                  onSuccess: () => toast.success(t('saved')),
+                  onError: (e) => toast.error(toMessage(e)),
+                },
               )
             }
           />
           <span className="flex flex-col gap-0.5">
             <span className="text-sm font-medium">{t('emailNotifications')}</span>
-            <span className="text-sm text-muted-foreground">{t('emailNotificationsDescription')}</span>
+            <span className="text-muted-foreground text-sm">
+              {t('emailNotificationsDescription')}
+            </span>
           </span>
         </label>
       </CardContent>
@@ -286,7 +425,9 @@ function PasswordCard() {
                       <Input
                         type="password"
                         dir="ltr"
-                        autoComplete={name === 'currentPassword' ? 'current-password' : 'new-password'}
+                        autoComplete={
+                          name === 'currentPassword' ? 'current-password' : 'new-password'
+                        }
                         {...field}
                       />
                     </FormControl>
@@ -301,93 +442,6 @@ function PasswordCard() {
             </Button>
           </form>
         </Form>
-      </CardContent>
-    </Card>
-  );
-}
-
-/**
- * Phase 7: AI-generated full project documentation. Like enrich-task this is a preview:
- * the Markdown is returned and shown here — nothing is stored on the server.
- */
-function AiProjectDocCard() {
-  const t = useTranslations('Settings');
-  const toMessage = useErrorMessage();
-  const { data: projects } = useProjects();
-  const [selectedId, setSelectedId] = useState<number | null>(null);
-  const [doc, setDoc] = useState<string | null>(null);
-  const generate = useProjectDoc();
-
-  const options = projects ?? [];
-  const projectId = selectedId ?? options[0]?.id ?? null;
-
-  const handleGenerate = () => {
-    if (projectId == null) return;
-    generate.mutate(projectId, {
-      onSuccess: (result) => setDoc(result.markdown),
-      onError: (error) => toast.error(toMessage(error)),
-    });
-  };
-
-  const handleCopy = async () => {
-    if (!doc) return;
-    await navigator.clipboard.writeText(doc);
-    toast.success(t('aiDocCopied'));
-  };
-
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>{t('aiDocTitle')}</CardTitle>
-        <CardDescription>{t('aiDocDescription')}</CardDescription>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-4">
-        <div className="flex flex-wrap items-center gap-2">
-          <Select
-            value={projectId != null ? String(projectId) : ''}
-            onValueChange={(next) => {
-              setSelectedId(Number(next));
-              setDoc(null);
-            }}
-          >
-            <SelectTrigger className="w-56" aria-label={t('aiDocSelectProject')}>
-              <SelectValue placeholder={t('aiDocSelectProject')} />
-            </SelectTrigger>
-            <SelectContent>
-              {options.map((project) => (
-                <SelectItem key={project.id} value={String(project.id)}>
-                  {project.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Button
-            type="button"
-            className="gap-2"
-            disabled={projectId == null || generate.isPending}
-            onClick={handleGenerate}
-          >
-            {generate.isPending ? (
-              <Loader2 className="size-4 animate-spin" />
-            ) : (
-              <Sparkles className="size-4" aria-hidden />
-            )}
-            {t('aiDocGenerate')}
-          </Button>
-        </div>
-        {generate.isPending && <p className="text-sm text-muted-foreground">{t('aiDocGenerating')}</p>}
-        {doc && (
-          <div className="flex flex-col gap-2">
-            <div className="max-h-96 overflow-auto rounded-md border bg-muted/40 p-3">
-              <pre className="whitespace-pre-wrap font-sans text-sm leading-6" dir="auto">
-                {doc}
-              </pre>
-            </div>
-            <Button type="button" variant="outline" size="sm" className="self-end" onClick={handleCopy}>
-              {t('aiDocCopy')}
-            </Button>
-          </div>
-        )}
       </CardContent>
     </Card>
   );

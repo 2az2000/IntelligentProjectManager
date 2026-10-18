@@ -1,3 +1,21 @@
+:root {
+  --ms-ink: #0a1020;
+  --ms-deep: #0d1526;
+  --ms-deep-2: #111b31;
+  --ms-paper: #f2f4f1;
+  --ms-card: #ffffff;
+  --ms-line: #d8ded6;
+  --ms-turquoise: #19b8a6;
+  --ms-turquoise-soft: #d7f2ee;
+  --ms-gold: #d9a441;
+  --ms-gold-soft: #f7ecd4;
+  --ms-rose: #e2604f;
+  --ms-text: #1c2333;
+  --ms-muted: #5c6678;
+  --ms-invert-muted: #93a0b8;
+  --ms-radius: 14px;
+}
+
 @import "tailwindcss";
 @import "tw-animate-css";
 

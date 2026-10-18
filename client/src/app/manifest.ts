@@ -5,7 +5,8 @@ export default function manifest(): MetadataRoute.Manifest {
     name: "Intelligent Project Management",
     short_name: "ManageSys",
     description: "Enterprise-grade intelligent project management system with analytics",
-    start_url: "/",
+    start_url: "/fa/app",
+    scope: "/fa/app",
     display: "standalone",
     background_color: "#ffffff",
     theme_color: "#0f172a",
@@ -18,4 +19,3 @@ export default function manifest(): MetadataRoute.Manifest {
     ],
   };
 }
-

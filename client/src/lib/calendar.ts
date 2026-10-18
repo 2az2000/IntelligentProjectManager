@@ -39,8 +39,9 @@ export const monthLabel = (date: Date, locale: string) =>
 export const dayLabel = (date: Date, locale: string) =>
   new Intl.DateTimeFormat(intlLocale(locale), { day: 'numeric' }).format(date);
 
-export const weekdayLabels = (week: Date[], locale: string) =>
-  week.map((d) => new Intl.DateTimeFormat(intlLocale(locale), { weekday: 'short' }).format(d));
+/** `narrow` (one letter) for tight grids like the date picker; `short` for the full calendar page. */
+export const weekdayLabels = (week: Date[], locale: string, width: 'short' | 'narrow' = 'short') =>
+  week.map((d) => new Intl.DateTimeFormat(intlLocale(locale), { weekday: width }).format(d));
 
 /** Local calendar day → ISO string at local midnight (what date pickers send to the API). */
 export const toDayIso = (date: Date) => startOfDay(date).toISOString();

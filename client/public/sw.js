@@ -1,7 +1,7 @@
 /* Phase 6 PWA: static-asset caching + offline fallback page.
  * Never caches the API (/api) or Socket.IO traffic — those always hit the network.
  */
-const CACHE = 'pm-static-v1';
+const CACHE = 'pm-static-v2';
 const PRECACHE = ['/offline.html'];
 
 self.addEventListener('install', (event) => {

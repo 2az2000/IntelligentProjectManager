@@ -1,4 +1,5 @@
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { apiClient } from '@/lib/api-client';
 import { cn } from '@/lib/utils';
 
 export const initials = (name: string) =>
@@ -10,6 +11,16 @@ export const initials = (name: string) =>
     .join('')
     .toUpperCase();
 
+/**
+ * Avatars uploaded through /users/me/avatar are stored as server-relative paths
+ * (`/avatars/<uuid>.png`); external URLs (or data/blob URLs) pass through unchanged.
+ */
+export function avatarSrc(url: string | null | undefined): string | undefined {
+  if (!url) return undefined;
+  if (/^(https?:|data:|blob:)/i.test(url)) return url;
+  return `${apiClient.defaults.baseURL ?? ''}${url.startsWith('/') ? url : `/${url}`}`;
+}
+
 export function UserAvatar({
   user,
   className,
@@ -19,7 +30,7 @@ export function UserAvatar({
 }) {
   return (
     <Avatar className={cn('size-7', className)} title={user.name}>
-      <AvatarImage src={user.avatarUrl ?? undefined} alt="" />
+      <AvatarImage src={avatarSrc(user.avatarUrl)} alt="" />
       <AvatarFallback className="text-[10px]">{initials(user.name)}</AvatarFallback>
     </Avatar>
   );
