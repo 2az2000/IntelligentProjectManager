@@ -1,5 +1,6 @@
 import type { ErrorRequestHandler, RequestHandler } from 'express';
 import { Prisma } from '@prisma/client';
+import multer from 'multer';
 import { ZodError, z } from 'zod';
 import { AppError, NotFoundError } from '../errors';
 import { logger } from '../logger';
@@ -20,6 +21,12 @@ function toAppError(err: unknown): AppError | null {
       case 'P2025':
         return new NotFoundError();
     }
+  }
+  if (err instanceof multer.MulterError) {
+    if (err.code === 'LIMIT_FILE_SIZE') {
+      return new AppError(413, 'FILE_TOO_LARGE', 'The uploaded file exceeds the size limit');
+    }
+    return new AppError(400, 'UPLOAD_ERROR', err.message);
   }
   if (err instanceof SyntaxError && 'body' in err) {
     return new AppError(400, 'INVALID_JSON', 'Malformed JSON body');

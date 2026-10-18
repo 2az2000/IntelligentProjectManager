@@ -3,7 +3,7 @@ import { ConflictError, NotFoundError, ValidationError } from '../../../shared/e
 import { env } from '../../../config/env';
 import type { ProjectRole } from '../../projects';
 import { buildSchedule, type ScheduleResult, type ScheduleTask } from './schedule';
-import { addWorkingHours, parseWeekend } from '../domain/work-calendar';
+import { parseWeekend } from '../domain/work-calendar';
 import { HolidayCalendar, addWorkingHoursWithHolidays } from '../domain/holidays';
 
 /** What scheduling needs from the projects module. */
