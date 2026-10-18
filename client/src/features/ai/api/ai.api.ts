@@ -1,5 +1,5 @@
 import { apiClient } from '@/lib/api-client';
-import type { AiMarkdown, EstimateSuggestion, ProjectDoc, TagSuggestions, TaskEnrichment } from '../types';
+import type { AiMarkdown, ProjectDoc, TagSuggestions, TaskEnrichment } from '../types';
 
 export interface EnrichTaskInput {
   title: string;
@@ -13,10 +13,6 @@ export const aiApi = {
   /** POST /projects/:projectId/ai/project-doc — full project documentation as Markdown. */
   projectDoc: async (projectId: number): Promise<ProjectDoc> =>
     (await apiClient.post<ProjectDoc>(`/projects/${projectId}/ai/project-doc`, {})).data,
-
-  /** §2 POST /projects/:projectId/ai/estimate — few-shot estimate from closed tasks. */
-  estimate: async (projectId: number, input: EnrichTaskInput): Promise<EstimateSuggestion> =>
-    (await apiClient.post<EstimateSuggestion>(`/projects/${projectId}/ai/estimate`, input)).data,
 
   /** §2 GET /projects/:projectId/ai/standup — yesterday/today/blockers. */
   standup: async (projectId: number): Promise<AiMarkdown> =>

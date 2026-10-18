@@ -59,7 +59,6 @@ describe('AI endpoints with a stubbed provider', () => {
           description: 'Ship the marketing landing page.',
           subtasks: ['Wireframe', 'Copywriting', 'Implement sections'],
           assignees: [{ userId: backend.id, reason: 'Backend and integrations' }, { userId: 99999, reason: 'ghost' }],
-          estimateHours: 12,
         }),
       ),
     );
@@ -74,7 +73,6 @@ describe('AI endpoints with a stubbed provider', () => {
       description: 'Ship the marketing landing page.',
       subtasks: ['Wireframe', 'Copywriting', 'Implement sections'],
       suggestedAssignees: [{ userId: backend.id, name: 'Backend Bita', reason: 'Backend and integrations' }],
-      estimateHours: 12,
     });
     // Preview only: no task rows were created.
     expect(await prisma.task.count()).toBe(0);
@@ -94,15 +92,56 @@ describe('AI endpoints with a stubbed provider', () => {
     expect(res.body.error.code).toBe('AI_BAD_RESPONSE');
   });
 
-  it('maps provider HTTP failures to 502 AI_PROVIDER_ERROR', async () => {
+  /**
+   * A dead key, an empty balance and a retired model slug all used to collapse into the same
+   * 502 "AI is unavailable". Each now has its own code so the client (and the operator reading
+   * server/.env) can tell which knob to turn.
+   */
+  it.each([
+    [500, 'AI_PROVIDER_ERROR', 502],
+    [401, 'AI_AUTH_FAILED', 503],
+    [402, 'AI_QUOTA_EXCEEDED', 503],
+    [404, 'AI_MODEL_NOT_FOUND', 503],
+  ])('maps a provider HTTP %i to %s', async (status, code, expected) => {
     const me = await createUser();
     const project = await createProject(me.id);
     const agent = await loginAs(app, me.email);
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('oops', { status: 500 })));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ error: { code: status, message: `upstream said ${status}` } }), {
+          status,
+          headers: { 'content-type': 'application/json' },
+        }),
+      ),
+    );
 
     const res = await agent.post(`/projects/${project.id}/ai/enrich-task`).send({ title: 'Something' });
-    expect(res.status).toBe(502);
-    expect(res.body.error.code).toBe('AI_PROVIDER_ERROR');
+    expect(res.status).toBe(expected);
+    expect(res.body.error.code).toBe(code);
+    // The provider's own words travel with the error so the failure is diagnosable.
+    expect(res.body.error.details.providerMessage).toBe(`upstream said ${status}`);
+  });
+
+  it('reports a retired model slug as a model problem, not a generic outage', async () => {
+    const me = await createUser();
+    const project = await createProject(me.id);
+    const agent = await loginAs(app, me.email);
+    // OpenRouter answers a request for a model with no endpoints with a 400, not a 404.
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ error: { message: 'No endpoints found for deepseek/retired:free' } }), {
+          status: 400,
+          headers: { 'content-type': 'application/json' },
+        }),
+      ),
+    );
+
+    const res = await agent.post(`/projects/${project.id}/ai/enrich-task`).send({ title: 'Something' });
+    expect(res.status).toBe(503);
+    expect(res.body.error.code).toBe('AI_MODEL_NOT_FOUND');
+    expect(res.body.error.message).toContain(env.AI_MODEL);
   });
 
   it('generates project documentation as markdown', async () => {

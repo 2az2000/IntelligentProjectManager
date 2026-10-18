@@ -9,21 +9,11 @@ export interface TaskEnrichment {
   description: string;
   subtasks: string[];
   suggestedAssignees: AiAssigneeSuggestion[];
-  estimateHours: number | null;
 }
 
 export interface ProjectDoc {
   markdown: string;
   model: string;
-}
-
-/** §2 smart estimate anchored on the team's own closed tasks. */
-export interface EstimateSuggestion {
-  estimateHours: number | null;
-  points: number | null;
-  /** Similar closed tasks the suggestion drew from (0 = generic). */
-  basedOn: number;
-  rationale: string;
 }
 
 /** §2 stand-up / thread summaries come back as Markdown. */

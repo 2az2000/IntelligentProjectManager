@@ -1,6 +1,6 @@
 import { useMutation } from '@tanstack/react-query';
 import { aiApi, type EnrichTaskInput } from '../api/ai.api';
-import type { AiMarkdown, EstimateSuggestion, ProjectDoc, TagSuggestions, TaskEnrichment } from '../types';
+import type { AiMarkdown, ProjectDoc, TagSuggestions, TaskEnrichment } from '../types';
 
 /** No cache needed: AI previews are one-shot, expensive calls the user triggers explicitly. */
 export function useEnrichTask(projectId: number) {
@@ -12,13 +12,6 @@ export function useEnrichTask(projectId: number) {
 export function useProjectDoc() {
   return useMutation({
     mutationFn: (projectId: number): Promise<ProjectDoc> => aiApi.projectDoc(projectId),
-  });
-}
-
-/** §2 few-shot estimate from the team's own closed tasks. */
-export function useAiEstimate(projectId: number) {
-  return useMutation({
-    mutationFn: (input: EnrichTaskInput): Promise<EstimateSuggestion> => aiApi.estimate(projectId, input),
   });
 }
 

@@ -45,15 +45,6 @@ export function createAiRouter(service: AiService): Router {
     }),
   );
 
-  // §2 smart estimate (few-shot from the team's own closed tasks).
-  router.post(
-    '/estimate',
-    aiLimiter,
-    handle({ params: projectIdParams, body: enrichTaskBody }, async ({ params, body }, req, res) => {
-      res.json(await service.suggestEstimate(currentUserId(req), params.projectId, body));
-    }),
-  );
-
   // §2 stand-up assistant (optional ?date=, defaults to yesterday/today window).
   router.get(
     '/standup',

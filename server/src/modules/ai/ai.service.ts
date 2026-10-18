@@ -1,12 +1,12 @@
 import { z } from 'zod';
 import { env } from '../../config/env';
 import { AppError, NotFoundError } from '../../shared/errors';
+import { logger } from '../../shared/logger';
 import type { Db } from '../../shared/db/prisma';
 import type { ProjectRole } from '../projects';
 import type {
   AiAssigneeSuggestion,
   EnrichedTask,
-  EstimateSuggestion,
   ProjectDocResult,
   StandupResult,
   ThreadSummaryResult,
@@ -23,6 +23,13 @@ interface ChatOptions {
   messages: ChatMessage[];
   /** Ask the provider for a JSON object (enrich) vs free markdown (doc). */
   json: boolean;
+}
+
+/** One provider+model pairing the chat chain may fall back through. */
+interface Candidate {
+  baseUrl: string;
+  apiKey: string;
+  model: string;
 }
 
 /** Project facts handed to the model — kept narrow on purpose (no secrets, no bodies). */
@@ -53,6 +60,97 @@ const notConfigured = () =>
     'AI is not configured on this server: set AI_API_KEY (optionally AI_BASE_URL and AI_MODEL)',
   );
 
+/**
+ * A rate limit gets its own code and status: it is a "come back shortly" condition, not a broken
+ * feature, and the client can show that difference (plus how long the provider asked us to wait).
+ */
+/**
+ * The provider's own words, for our logs. Bounded because a gateway can answer with an HTML
+ * error page, and short because the raw body is not something a user should ever see.
+ */
+async function upstreamMessage(res: Response): Promise<string | null> {
+  try {
+    const text = (await res.text()).slice(0, 2000);
+    if (!text) return null;
+    try {
+      const parsed = JSON.parse(text) as { error?: unknown; message?: unknown };
+      const err = parsed.error;
+      const message =
+        typeof err === 'string'
+          ? err
+          : typeof err === 'object' && err !== null && 'message' in err
+            ? (err as { message?: unknown }).message
+            : parsed.message;
+      if (typeof message === 'string' && message.trim()) return message.trim().slice(0, 300);
+    } catch {
+      // Not JSON — fall through to the raw snippet.
+    }
+    return text.replace(/\s+/g, ' ').trim().slice(0, 300);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Maps a provider answer onto our own error vocabulary.
+ *
+ * The mapping is deliberately fine-grained: "the AI is unavailable" is the same sentence for a
+ * retired model slug, a revoked key and an empty balance, yet each needs a different fix. The
+ * upstream status and message are logged once, here, so the server terminal tells the operator
+ * which one it is.
+ */
+async function providerError(res: Response, candidate: Candidate): Promise<AppError> {
+  const upstream = await upstreamMessage(res);
+  logger.error(
+    { status: res.status, model: candidate.model, provider: candidate.baseUrl, upstream },
+    'AI provider rejected the request',
+  );
+  const details = upstream ? { providerMessage: upstream } : null;
+
+  if (res.status === 429) {
+    const hinted = retryAfterSeconds(res);
+    return new AppError(
+      429,
+      'AI_RATE_LIMITED',
+      'The AI provider rate-limited this request (free tiers cap how often they may be called)',
+      { ...(details ?? {}), ...(hinted !== null ? { retryAfterSeconds: hinted } : {}) },
+    );
+  }
+  if (res.status === 401 || res.status === 403) {
+    return new AppError(503, 'AI_AUTH_FAILED', 'The AI provider rejected our API key', details);
+  }
+  if (res.status === 402) {
+    return new AppError(503, 'AI_QUOTA_EXCEEDED', 'The AI provider account is out of credit', details);
+  }
+  // A retired/unknown slug answers 404 — and OpenRouter also reports "no endpoints" as a 400.
+  const looksLikeModelMiss = res.status === 404 || /no endpoints|model|endpoint/i.test(upstream ?? '');
+  if (res.status === 404 || (res.status === 400 && looksLikeModelMiss)) {
+    return new AppError(
+      503,
+      'AI_MODEL_NOT_FOUND',
+      `The AI model "${candidate.model}" is not available on this provider`,
+      details,
+    );
+  }
+  return new AppError(502, 'AI_PROVIDER_ERROR', `The AI provider responded with HTTP ${res.status}`, details);
+}
+
+/**
+ * How long the provider asks us to wait, in seconds. OpenAI-compatible gateways send either
+ * `Retry-After` or the reset timestamp of their own rate-limit window (OpenRouter's
+ * `x-ratelimit-reset` is a Unix time in seconds). Both are honoured when present.
+ */
+function retryAfterSeconds(res: Response): number | null {
+  const retryAfter = Number(res.headers.get('retry-after'));
+  if (Number.isFinite(retryAfter) && retryAfter > 0) return Math.ceil(retryAfter);
+  const reset = Number(res.headers.get('x-ratelimit-reset'));
+  if (Number.isFinite(reset) && reset > 0) {
+    const until = (reset > 1e12 ? reset : reset * 1000) - Date.now();
+    if (until > 0) return Math.ceil(until / 1000);
+  }
+  return null;
+}
+
 // ---- LLM output validation (the model's answer is untrusted input) --------
 
 const rawEnrichSchema = z.object({
@@ -67,13 +165,6 @@ const rawEnrichSchema = z.object({
     )
     .max(5)
     .optional(),
-  estimateHours: z.number().positive().max(1000).nullish(),
-});
-
-const rawEstimateSchema = z.object({
-  estimateHours: z.number().positive().max(1000).nullish(),
-  points: z.number().int().min(0).max(200).nullish(),
-  rationale: z.string().max(600).optional(),
 });
 
 const rawTagsSchema = z.object({
@@ -99,7 +190,7 @@ export class AiService {
 
   /**
    * Preview for the "add task with AI" flow: completes a rough task with a description,
-   * subtask titles, assignee suggestions and an effort estimate. The client decides what
+   * subtask titles and assignee suggestions. The client decides what
    * to keep; applying happens through the normal task endpoints (preview-then-apply).
    */
   async enrichTask(
@@ -139,68 +230,6 @@ export class AiService {
     return { markdown: markdown.trim(), model: env.AI_MODEL };
   }
 
-  /**
-   * §2 smart estimate: few-shot from this team's own closed tasks (title+description →
-   * actual hours), so the number is anchored to real experience. `basedOn` tells the
-   * UI how honest to be ("based on 3 similar tasks").
-   */
-  async suggestEstimate(
-    userId: number,
-    projectId: number,
-    input: { title: string; description?: string },
-  ): Promise<EstimateSuggestion> {
-    await this.access.assertRole(projectId, userId, 'MEMBER');
-    const [closed, requester] = await Promise.all([
-      this.db.task.findMany({
-        where: {
-          projectId,
-          deletedAt: null,
-          status: 'DONE',
-          estimateHours: { not: null },
-        },
-        select: { title: true, description: true, estimateHours: true, points: true },
-        orderBy: { completedAt: 'desc' },
-        take: 10,
-      }),
-      this.db.user.findUnique({ where: { id: userId }, select: { locale: true } }),
-    ]);
-
-    const content = await this.chat({
-      json: true,
-      messages: [
-        { role: 'system', content: ESTIMATE_SYSTEM_PROMPT },
-        {
-          role: 'user',
-          content: renderEstimate(
-            closed.map((t) => ({
-              title: t.title,
-              description: t.description ?? '',
-              estimateHours: t.estimateHours ?? 0,
-              points: t.points,
-            })),
-            input,
-            languageOf(requester?.locale),
-          ),
-        },
-      ],
-    });
-
-    let raw: unknown;
-    try {
-      raw = extractJson(content);
-    } catch {
-      throw new AppError(502, 'AI_BAD_RESPONSE', 'The AI did not return valid JSON');
-    }
-    const parsed = rawEstimateSchema.safeParse(raw);
-    if (!parsed.success) throw new AppError(502, 'AI_BAD_RESPONSE', 'The AI returned an unexpected shape');
-    return {
-      estimateHours: parsed.data.estimateHours ?? null,
-      points: parsed.data.points ?? null,
-      basedOn: closed.length,
-      rationale: (parsed.data.rationale ?? '').trim(),
-    };
-  }
-
   /** §2 stand-up assistant: yesterday/today/blockers from the user's own activity. */
   async standup(userId: number, projectId: number, date?: Date): Promise<StandupResult> {
     await this.access.assertRole(projectId, userId, 'VIEWER');
@@ -216,7 +245,13 @@ export class AiService {
         take: 40,
       }),
       this.db.task.findMany({
-        where: { projectId, deletedAt: null, assigneeId: userId, status: { not: 'DONE' } },
+        // The user's own work: tasks they lead plus the ones they share as a co-assignee.
+        where: {
+          projectId,
+          deletedAt: null,
+          status: { not: 'DONE' },
+          OR: [{ assigneeId: userId }, { collaborators: { some: { userId } } }],
+        },
         select: { title: true, dueDate: true, status: true },
         orderBy: { dueDate: 'asc' },
         take: 15,
@@ -324,34 +359,112 @@ export class AiService {
 
   // ---- LLM plumbing -----------------------------------------------------------------------
 
-  private async chat(opts: ChatOptions): Promise<string> {
-    if (!env.AI_API_KEY) throw notConfigured();
-    const base: Record<string, unknown> = { model: env.AI_MODEL, messages: opts.messages, temperature: 0.3 };
-    if (opts.json) base.response_format = { type: 'json_object' };
-
-    let res = await this.request(base);
-    // Some OpenAI-compatible providers reject response_format — retry once without it.
-    if (res.status === 400 && opts.json) {
-      const rest = { ...base };
-      delete rest.response_format;
-      res = await this.request(rest);
+  /**
+   * The order the chat chain walks: the primary model, then AI_FALLBACK_MODELS on the same
+   * provider, then the second provider (AI_FALLBACK_*) when its key is configured.
+   */
+  private candidates(): Candidate[] {
+    const primary = { baseUrl: env.AI_BASE_URL, apiKey: env.AI_API_KEY ?? '', model: env.AI_MODEL };
+    const list: Candidate[] = env.AI_API_KEY ? [primary] : [];
+    if (env.AI_API_KEY) {
+      for (const model of env.AI_FALLBACK_MODELS) list.push({ ...primary, model });
     }
-    if (!res.ok) {
-      throw new AppError(502, 'AI_PROVIDER_ERROR', `The AI provider responded with HTTP ${res.status}`);
+    if (env.AI_FALLBACK_API_KEY) {
+      list.push({
+        baseUrl: env.AI_FALLBACK_BASE_URL ?? env.AI_BASE_URL,
+        apiKey: env.AI_FALLBACK_API_KEY,
+        model: env.AI_FALLBACK_MODEL ?? env.AI_MODEL,
+      });
     }
-    const payload = (await res.json()) as { choices?: { message?: { content?: string } }[] };
-    const content = payload.choices?.[0]?.message?.content;
-    if (!content) throw new AppError(502, 'AI_BAD_RESPONSE', 'The AI returned an empty response');
-    return content;
+    return list;
   }
 
-  private async request(body: Record<string, unknown>): Promise<Response> {
+  /**
+   * Asks each candidate in turn. Rate limits, 5xx answers and unreachable providers move on to
+   * the next candidate; a malformed model answer does not (another model would need a different
+   * prompt) and a timeout does not either, because making the user wait twice is worse than
+   * failing fast.
+   *
+   * Only the head of the chain gets the full retry budget: a fallback is a safety net, not a
+   * second main path, and retrying every candidate would turn one stuck request into a
+   * ten-second wait. The FIRST error is the one reported — it names the configured model and
+   * key, which is the thing an operator actually has to fix.
+   */
+  private async chat(opts: ChatOptions): Promise<string> {
+    const candidates = this.candidates();
+    if (candidates.length === 0) throw notConfigured();
+
+    let firstError: AppError | null = null;
+    for (const [index, candidate] of candidates.entries()) {
+      try {
+        return await this.complete(candidate, opts, index === 0 ? env.AI_RETRY_ATTEMPTS : 0);
+      } catch (error) {
+        if (!(error instanceof AppError)) throw error;
+        if (error.code === 'AI_BAD_RESPONSE' || error.code === 'AI_TIMEOUT') throw error;
+        firstError ??= error;
+      }
+    }
+    throw firstError ?? new AppError(502, 'AI_PROVIDER_ERROR', 'The AI provider responded with an error');
+  }
+
+  /** One candidate with `retries` allowed for retryable answers. */
+  private async complete(candidate: Candidate, opts: ChatOptions, retries: number): Promise<string> {
+    const body: Record<string, unknown> = {
+      model: candidate.model,
+      messages: opts.messages,
+      temperature: 0.3,
+    };
+    if (opts.json) body.response_format = { type: 'json_object' };
+    // OpenRouter's own remedy for its "upstream_provider_shared_pool" 429 is provider routing:
+    // ask it to favour the endpoint that is answering fastest instead of the one our account
+    // happened to land on. Sent only to OpenRouter — other OpenAI-compatible gateways reject
+    // unknown top-level fields.
+    if (candidate.baseUrl.includes('openrouter.ai')) {
+      body.provider = { sort: 'throughput', allow_fallbacks: true };
+    }
+
+    for (let attempt = 1; ; attempt += 1) {
+      const res = await this.request(candidate, body);
+
+      if (res.ok) {
+        const payload = (await res.json()) as { choices?: { message?: { content?: string } }[] };
+        const content = payload.choices?.[0]?.message?.content;
+        if (!content) throw new AppError(502, 'AI_BAD_RESPONSE', 'The AI returned an empty response');
+        return content;
+      }
+
+      // Some OpenAI-compatible providers reject response_format — retry once without it.
+      if (res.status === 400 && body.response_format) {
+        delete body.response_format;
+        continue;
+      }
+
+      const retryable = res.status === 429 || res.status >= 500;
+      if (retryable && attempt <= retries) {
+        await this.backoff(attempt, res);
+        continue;
+      }
+      throw await providerError(res, candidate);
+    }
+  }
+
+  /** Waits before the next attempt, honouring the provider's own retry hint when it sends one. */
+  private async backoff(attempt: number, res: Response): Promise<void> {
+    const hinted = retryAfterSeconds(res);
+    const ms = Math.min(hinted !== null ? hinted * 1000 : env.AI_RETRY_BASE_MS * 2 ** (attempt - 1), 10_000);
+    if (ms > 0) await new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  private async request(candidate: Candidate, body: Record<string, unknown>): Promise<Response> {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), env.AI_TIMEOUT_MS);
     try {
-      return await (this.fetchImpl ?? globalThis.fetch)(`${env.AI_BASE_URL}/chat/completions`, {
+      return await (this.fetchImpl ?? globalThis.fetch)(`${candidate.baseUrl}/chat/completions`, {
         method: 'POST',
-        headers: { 'content-type': 'application/json', authorization: `Bearer ${env.AI_API_KEY ?? ''}` },
+        headers: {
+          'content-type': 'application/json',
+          authorization: `Bearer ${candidate.apiKey}`,
+        },
         body: JSON.stringify(body),
         signal: controller.signal,
       });
@@ -392,14 +505,13 @@ export class AiService {
       description: (data.description ?? '').trim(),
       subtasks,
       suggestedAssignees,
-      estimateHours: data.estimateHours ?? null,
     };
   }
 
   // ---- project context (the data the model is allowed to know) -----------------------------
 
   private async buildContext(projectId: number): Promise<EnrichContext> {
-    const [project, members, workload, recentTasks] = await Promise.all([
+    const [project, members, workload, sharedWorkload, recentTasks] = await Promise.all([
       this.db.project.findUnique({
         where: { id: projectId },
         select: { name: true, description: true },
@@ -414,6 +526,12 @@ export class AiService {
         where: { projectId, deletedAt: null, status: { not: 'DONE' }, assigneeId: { not: null } },
         _count: { _all: true },
       }),
+      // Tasks a member only shares (co-assignee) still count as load when suggesting owners.
+      this.db.taskCollaborator.groupBy({
+        by: ['userId'],
+        where: { task: { projectId, deletedAt: null, status: { not: 'DONE' } } },
+        _count: { _all: true },
+      }),
       this.db.task.findMany({
         where: { projectId, deletedAt: null, parentId: null },
         select: { title: true, status: true },
@@ -424,10 +542,14 @@ export class AiService {
     if (!project) throw new NotFoundError('PROJECT_NOT_FOUND', 'Project not found');
 
     const openByUser = new Map(workload.map((w) => [w.assigneeId, w._count._all]));
+    const sharedByUser = new Map(sharedWorkload.map((w) => [w.userId, w._count._all]));
     return {
       project,
       recentTasks,
-      members: members.map((m) => ({ ...m, openTasks: openByUser.get(m.userId) ?? 0 })),
+      members: members.map((m) => ({
+        ...m,
+        openTasks: (openByUser.get(m.userId) ?? 0) + (sharedByUser.get(m.userId) ?? 0),
+      })),
     };
   }
 
@@ -473,7 +595,6 @@ const ENRICH_SYSTEM_PROMPT = [
   '- "subtasks": 3-8 ordered, concrete subtask titles (strings)',
   '- "assignees": up to 3 objects {"userId": number, "reason": string} — only members whose',
   '  role or skills fit the work, ordered by best fit; omit the key if nobody fits',
-  '- "estimateHours": total effort estimate in working hours (number) or null',
   'Rules: userId MUST be copied exactly from the member list; never invent members, ids or facts.',
   'Respond with JSON only — no prose around it.',
 ].join('\n');
@@ -484,15 +605,6 @@ const DOC_SYSTEM_PROMPT = [
   'timeline & milestones (use the provided dates, if any), risks, and suggested next steps.',
   'Base every statement ONLY on the provided data — never invent tasks, people or dates.',
   'Return Markdown only, starting with a top-level title.',
-].join('\n');
-
-const ESTIMATE_SYSTEM_PROMPT = [
-  'You are a senior estimator inside a project management API.',
-  'Given a new task and a list of this team\'s recently completed tasks with their actual effort,',
-  'respond with JSON: {"estimateHours": number|null, "points": number|null, "rationale": string}.',
-  'Anchor the estimate on the similar completed tasks (title/description similarity) — extrapolate',
-  'from real history, not generic guesses. If history is thin, say so in the rationale.',
-  'Respond with JSON only.',
 ].join('\n');
 
 const STANDUP_SYSTEM_PROMPT = [
@@ -547,27 +659,6 @@ function renderEnrichTask(
   ]
     .filter((line) => line !== undefined)
     .join('\n');
-}
-
-function renderEstimate(
-  history: { title: string; description: string; estimateHours: number; points: number | null }[],
-  input: { title: string; description?: string },
-  language: string,
-): string {
-  return [
-    `# Team's recently completed tasks (the calibration set)`,
-    history.length > 0
-      ? history
-          .map((h) => `- "${h.title}" — estimate ${h.estimateHours}h${h.points ? `, ${h.points} points` : ''}${h.description ? `: ${h.description.slice(0, 150)}` : ''}`)
-          .join('\n')
-      : '(none — the estimate will be generic; say so in the rationale)',
-    '',
-    `# Task to estimate`,
-    `Title: ${input.title}`,
-    input.description ? `Description: ${input.description}` : '',
-    '',
-    `Write the rationale in ${language}.`,
-  ].join('\n');
 }
 
 function renderStandup(
