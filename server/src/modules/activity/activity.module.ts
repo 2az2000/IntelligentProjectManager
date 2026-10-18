@@ -67,7 +67,8 @@ export class ActivityService {
     const rows = await this.db.activityLog.findMany({
       where: { taskId },
       include: { actor: { select: { id: true, name: true, avatarUrl: true } } },
-      orderBy: { createdAt: 'desc' },
+      // `id` breaks ties: one change records several rows in a single createMany (same createdAt).
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       take: Math.min(limit, 100),
     });
     return rows.map((row) => ({

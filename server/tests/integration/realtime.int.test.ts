@@ -99,8 +99,13 @@ describe('activity log', () => {
     const dueRow = updated.find((row: { field: string }) => row.field === 'dueDate');
     expect(dueRow).toMatchObject({ newValue: '2099-01-01T00:00:00.000Z' });
 
+    // A move records both the workflow column and its category in one batch — look them up by
+    // field instead of relying on the order of rows that share a timestamp.
     const moved = byAction('moved');
-    expect(moved[0]).toMatchObject({ field: 'status', oldValue: 'IN_PROGRESS', newValue: 'REVIEW' });
+    const movedStatus = moved.find((row: { field: string }) => row.field === 'status');
+    expect(movedStatus).toMatchObject({ oldValue: 'IN_PROGRESS', newValue: 'REVIEW' });
+    const movedColumn = moved.find((row: { field: string }) => row.field === 'statusKey');
+    expect(movedColumn).toMatchObject({ oldValue: 'IN_PROGRESS', newValue: 'REVIEW' });
   });
 
   it('reports description and label edits, so an edit is never just "updated the task"', async () => {
