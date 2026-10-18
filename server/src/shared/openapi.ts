@@ -12,14 +12,9 @@ import {
   updateMemberBody,
   updateProjectBody,
 } from '../modules/projects';
-import {
-  createTaskBody,
-  listTasksQuery,
-  moveTaskBody,
-  updateTaskBody,
-} from '../modules/tasks';
+import { createTaskBody, listTasksQuery, moveTaskBody, updateTaskBody } from '../modules/tasks';
 import { enrichTaskBody } from '../modules/ai';
-import { forgotPasswordBody, resetPasswordBody } from '../modules/auth';
+import { changePasswordBody, forgotPasswordBody, resetPasswordBody } from '../modules/auth';
 
 /**
  * Phase 6: machine-readable API contract served at /docs (Swagger UI) and
@@ -92,6 +87,15 @@ const ProjectSchema = z
   })
   .openapi('Project');
 
+/** A task's assignee as the API returns it: `assignees[0]` is the lead. */
+const AssigneeSchema = z
+  .object({
+    id: Id,
+    name: z.string(),
+    avatarUrl: z.string().nullable().optional(),
+  })
+  .openapi('Assignee');
+
 const TaskSchema = z
   .object({
     id: Id,
@@ -99,13 +103,19 @@ const TaskSchema = z
     parentId: Id.nullable().optional(),
     title: z.string(),
     description: z.string().nullable().optional(),
+    /** Analytics bucket of `statusKey`. */
     status: Status,
+    /** Workflow column the task sits in (`ProjectStatus.key` of the same project). */
+    statusKey: z.string(),
     priority: Priority,
     points: z.number().nullable().optional(),
     startDate: z.string().nullable().optional(),
     dueDate: z.string().nullable().optional(),
     estimateHours: z.number().nullable().optional(),
+    /** Lead assignee; null when nobody owns the task. */
     assigneeId: Id.nullable().optional(),
+    /** Whole assignee set: lead first, then co-assignees (`assigneeIds` on writes). */
+    assignees: z.array(AssigneeSchema).optional(),
     tags: z.array(z.string()).optional(),
     position: z.number().optional(),
   })
@@ -133,21 +143,27 @@ const AttachmentSchema = z
   })
   .openapi('Attachment');
 
+/**
+ * One row of a task's audit trail. A row is a single tracked-field change: `field` is null for
+ * lifecycle events (created/moved/deleted) and one of the task's tracked fields otherwise.
+ */
 const ActivityEntrySchema = z
   .object({
     id: Id,
     taskId: Id,
-    actorId: Id,
-    action: z.string(),
-    changes: z.array(z.object({ field: z.string(), oldValue: z.unknown().nullable(), newValue: z.unknown().nullable() })).optional(),
-    createdAt: z.string(),
+    action: z.enum(['created', 'updated', 'moved', 'deleted']),
+    field: z.string().nullable(),
+    oldValue: z.string().nullable(),
+    newValue: z.string().nullable(),
+    actor: z.object({ id: Id, name: z.string(), avatarUrl: z.string().nullable() }),
+    createdAt: z.string().datetime(),
   })
   .openapi('ActivityEntry');
 
 const NotificationSchema = z
   .object({
     id: Id,
-    type: z.enum(['ASSIGNED', 'MENTIONED', 'COMMENTED', 'DUE_REMINDER']),
+    type: z.enum(['ASSIGNED', 'MENTIONED', 'COMMENTED', 'DUE_REMINDER', 'DAILY_DIGEST']),
     actorId: Id.nullable().optional(),
     taskId: Id.nullable().optional(),
     projectId: Id.nullable().optional(),
@@ -173,7 +189,6 @@ const AiEnrichmentSchema = z
     description: z.string(),
     subtasks: z.array(z.string()),
     suggestedAssignees: z.array(AiAssigneeSchema),
-    estimateHours: z.number().nullable(),
   })
   .openapi('AiEnrichment');
 
@@ -181,10 +196,12 @@ const AiProjectDocSchema = z
   .object({ markdown: z.string(), model: z.string() })
   .openapi('AiProjectDoc');
 
-// ---- path helpers ---------------------------------------------------------
-
 const pathId = (name: string) =>
-  z.coerce.number().int().positive().openapi({ param: { name, in: 'path', required: true } });
+  z.coerce
+    .number()
+    .int()
+    .positive()
+    .openapi({ param: { name, in: 'path', required: true } });
 
 const json = (schema: z.ZodTypeAny) => ({ 'application/json': { schema } });
 const ok = (schema?: z.ZodTypeAny): RouteConfig['responses'][string] => ({
@@ -266,6 +283,16 @@ register({
 });
 
 register({
+  method: 'post',
+  path: '/auth/change-password',
+  summary: 'Change my password (requires the current one; keeps this session)',
+  tags: ['Auth'],
+  security: auth,
+  request: { body: { content: json(changePasswordBody), required: true } },
+  responses: { 204: noContent(), 400: error, 401: error },
+});
+
+register({
   method: 'get',
   path: '/auth/me',
   summary: 'Current session user',
@@ -284,7 +311,10 @@ register({
   security: auth,
   request: {
     query: z.object({
-      search: z.string().min(2).openapi({ param: { name: 'search', in: 'query', required: true } }),
+      search: z
+        .string()
+        .min(2)
+        .openapi({ param: { name: 'search', in: 'query', required: true } }),
     }),
   },
   responses: { 200: ok(z.array(UserSchema)), 401: error },
@@ -314,6 +344,96 @@ register({
   },
   responses: { 200: ok(UserSchema), 400: error, 401: error },
 });
+
+// ---- avatars (public) ------------------
+
+register({
+  method: 'get',
+  path: '/avatars/{fileName}',
+  summary: 'Serve an uploaded avatar (public, server-minted UUID names only)',
+  tags: ['Users'],
+  request: {
+    params: z.object({
+      fileName: z.string().openapi({ param: { name: 'fileName', in: 'path', required: true } }),
+    }),
+  },
+  responses: {
+    200: {
+      description: 'Image stream',
+      content: { 'image/png': { schema: z.string().openapi({ format: 'binary' }) } },
+    },
+    404: error,
+  },
+});
+
+// ---- digest (dashboard) ------------------------------------------------
+
+/**
+ * The daily report behind the DAILY_DIGEST notification. `dueToday`/`overdue`/`open` are the
+ * stat tiles, `tasks` the due-today-and-late list (each row knows how late it is), and
+ * `perProject`/`completedSinceYesterday`/`inProgress` the context that makes it a report
+ * rather than a bare count.
+ */
+const DigestSchema = z
+  .object({
+    generatedAt: z.string().datetime(),
+    open: z.number().int().min(0),
+    overdue: z.number().int().min(0),
+    dueToday: z.number().int().min(0),
+    dueThisWeek: z.number().int().min(0),
+    completedSinceYesterday: z.number().int().min(0),
+    inProgress: z.number().int().min(0),
+    /** Age of the oldest overdue task in whole days; 0 when nothing is overdue. */
+    overdueByDays: z.number().int().min(0),
+    tasks: z.array(
+      z.object({
+        id: Id,
+        title: z.string(),
+        status: z.string(),
+        priority: z.string(),
+        dueDate: z.string().datetime().nullable(),
+        projectId: Id,
+        projectName: z.string(),
+        overdue: z.boolean(),
+        overdueByDays: z.number().int().min(0),
+        daysUntilDue: z.number().int().nullable(),
+      }),
+    ),
+    perProject: z.array(
+      z.object({
+        projectId: Id,
+        projectName: z.string(),
+        open: z.number().int().min(0),
+        overdue: z.number().int().min(0),
+      }),
+    ),
+  })
+  .openapi('Digest');
+
+const SummarySchema = z
+  .object({
+    projectCount: z.number().int().min(0),
+    myOpenTasks: z.number().int().min(0),
+    overdue: z.number().int().min(0),
+    dueThisWeek: z.number().int().min(0),
+    completedThisWeek: z.number().int().min(0),
+    byStatus: z.record(z.string(), z.number().int().min(0)),
+    upcoming: z.array(
+      z.object({
+        id: Id,
+        title: z.string(),
+        dueDate: z.string().datetime().nullable(),
+        priority: z.string(),
+        status: z.string(),
+        projectId: Id,
+        projectName: z.string(),
+      }),
+    ),
+    recentProjects: z.array(
+      z.object({ id: Id, name: z.string(), updatedAt: z.string().datetime() }),
+    ),
+  })
+  .openapi('DashboardSummary');
 
 // ---- projects -------------------------------------------------------------
 
@@ -708,7 +828,56 @@ register({
   summary: 'Dashboard cards: stats, chart, upcoming and recent projects',
   tags: ['Dashboard'],
   security: auth,
-  responses: { 200: ok(z.record(z.string(), z.unknown())), 401: error },
+  responses: { 200: ok(SummarySchema), 401: error },
+});
+
+register({
+  method: 'get',
+  path: '/dashboard/digest',
+  summary: 'Daily digest report (the tasks behind the DAILY_DIGEST notification)',
+  tags: ['Dashboard'],
+  security: auth,
+  responses: { 200: ok(DigestSchema), 401: error },
+});
+
+// ---- Team / workload (§Imp #4) --------------------------------------------
+
+const TeamWorkloadSchema = z.object({
+  capacityHoursPerWeek: z.number().int().positive(),
+  weeks: z.array(z.object({ start: z.string(), end: z.string() })),
+  members: z.array(
+    z.object({
+      user: UserSchema,
+      capacityHoursPerWeek: z.number().int().positive().nullable(),
+      cells: z.array(
+        z.object({
+          hours: z.number(),
+          tasks: z.array(
+            z.object({
+              id: Id,
+              title: z.string(),
+              projectId: Id,
+              projectName: z.string(),
+              estimateHours: z.number().nullable(),
+              dueDate: z.string().nullable(),
+            }),
+          ),
+        }),
+      ),
+    }),
+  ),
+});
+
+register({
+  method: 'get',
+  path: '/me/team/workload',
+  summary: 'Open workload per member × week (hours summed over estimate shares), for the Members heatmap and the Timeline over-allocation badge',
+  tags: ['Team'],
+  security: auth,
+  request: {
+    query: z.object({ weeks: z.coerce.number().int().min(1).max(26).default(8) }),
+  },
+  responses: { 200: ok(TeamWorkloadSchema), 401: error },
 });
 
 // ---- AI (phase 7) ---------------------------------------------------------
@@ -754,6 +923,177 @@ register({
   },
 });
 
+// ---- labels (structured project vocabulary) ---------------------------------
+
+const LabelSchema = z
+  .object({
+    id: Id,
+    name: z.string(),
+    /** `#rrggbb`, lower-case. */
+    color: z.string(),
+    /** Key from the client's shared icon set. */
+    icon: z.string(),
+  })
+  .openapi('Label');
+
+const labelBody = z
+  .object({
+    name: z.string().trim().min(1).max(40),
+    color: z.string().regex(/^#[0-9a-fA-F]{6}$/),
+    icon: z.string(),
+  })
+  .strict();
+
+register({
+  method: 'get',
+  path: '/projects/{projectId}/labels',
+  summary: "A project's label vocabulary (alphabetical)",
+  tags: ['Labels'],
+  security: auth,
+  request: { params: z.object({ projectId: pathId('projectId') }) },
+  responses: { 200: ok(z.array(LabelSchema)), 401: error, 403: error, 404: error },
+});
+
+register({
+  method: 'post',
+  path: '/projects/{projectId}/labels',
+  summary: 'Add a label to the vocabulary (ADMIN+)',
+  tags: ['Labels'],
+  security: auth,
+  request: {
+    params: z.object({ projectId: pathId('projectId') }),
+    body: { content: json(labelBody), required: true },
+  },
+  responses: { 201: ok(LabelSchema), 400: error, 403: error, 404: error, 409: error },
+});
+
+register({
+  method: 'patch',
+  path: '/projects/{projectId}/labels/{labelId}',
+  summary: 'Rename/recolour a label (ADMIN+); a rename rewrites the matching tag on project tasks',
+  tags: ['Labels'],
+  security: auth,
+  request: {
+    params: z.object({ projectId: pathId('projectId'), labelId: pathId('labelId') }),
+    body: { content: json(labelBody.partial()), required: true },
+  },
+  responses: { 200: ok(LabelSchema), 400: error, 403: error, 404: error, 409: error },
+});
+
+register({
+  method: 'delete',
+  path: '/projects/{projectId}/labels/{labelId}',
+  summary: 'Remove a label from the vocabulary (ADMIN+); task tags are left untouched',
+  tags: ['Labels'],
+  security: auth,
+  request: { params: z.object({ projectId: pathId('projectId'), labelId: pathId('labelId') }) },
+  responses: { 204: { description: 'Removed' }, 403: error, 404: error },
+});
+
+// ---- statuses (per-project workflow columns) -------------------------------
+
+const StatusCategorySchema = z.enum(['TODO', 'IN_PROGRESS', 'REVIEW', 'DONE']);
+
+const ProjectStatusSchema = z
+  .object({
+    id: Id,
+    /** ASCII slug stored on tasks; immutable after creation. */
+    key: z.string(),
+    /** Fallback display name for statuses without a client translation. */
+    label: z.string(),
+    /** `#rrggbb`, lower-case. */
+    color: z.string(),
+    category: StatusCategorySchema,
+    position: z.number(),
+  })
+  .openapi('ProjectStatus');
+
+const statusColor = z
+  .string()
+  .trim()
+  .regex(/^#[0-9a-fA-F]{6}$/)
+  .transform((value) => value.toLowerCase());
+
+const createStatusBody = z
+  .object({
+    label: z.string().trim().min(1).max(40),
+    color: statusColor,
+    category: StatusCategorySchema,
+    /** Insert directly after this column instead of appending at the end. */
+    afterKey: z.string().trim().min(1).max(40).optional(),
+  })
+  .strict();
+
+const patchStatusBody = z
+  .object({
+    label: z.string().trim().min(1).max(40).optional(),
+    color: statusColor.optional(),
+    category: StatusCategorySchema.optional(),
+  })
+  .strict();
+
+register({
+  method: 'get',
+  path: '/projects/{projectId}/statuses',
+  summary: "A project's workflow columns in board order",
+  tags: ['Statuses'],
+  security: auth,
+  request: { params: z.object({ projectId: pathId('projectId') }) },
+  responses: { 200: ok(z.array(ProjectStatusSchema)), 401: error, 403: error, 404: error },
+});
+
+register({
+  method: 'post',
+  path: '/projects/{projectId}/statuses',
+  summary: 'Add a workflow column (ADMIN+); `afterKey` places it, otherwise it is appended',
+  tags: ['Statuses'],
+  security: auth,
+  request: {
+    params: z.object({ projectId: pathId('projectId') }),
+    body: { content: json(createStatusBody), required: true },
+  },
+  responses: { 201: ok(ProjectStatusSchema), 400: error, 403: error, 404: error, 409: error },
+});
+
+register({
+  method: 'post',
+  path: '/projects/{projectId}/statuses/reorder',
+  summary: 'Rewrite the column order (ADMIN+); body must list every status key exactly once',
+  tags: ['Statuses'],
+  security: auth,
+  request: {
+    params: z.object({ projectId: pathId('projectId') }),
+    body: { content: json(z.object({ keys: z.array(z.string()).min(1) }).strict()), required: true },
+  },
+  responses: { 200: ok(z.array(ProjectStatusSchema)), 400: error, 403: error, 404: error },
+});
+
+register({
+  method: 'patch',
+  path: '/projects/{projectId}/statuses/{statusId}',
+  summary: 'Rename/recolour/re-bucket a column (ADMIN+); a category change re-buckets its tasks',
+  tags: ['Statuses'],
+  security: auth,
+  request: {
+    params: z.object({ projectId: pathId('projectId'), statusId: pathId('statusId') }),
+    body: { content: json(patchStatusBody), required: true },
+  },
+  responses: { 200: ok(ProjectStatusSchema), 400: error, 403: error, 404: error },
+});
+
+register({
+  method: 'delete',
+  path: '/projects/{projectId}/statuses/{statusId}',
+  summary: 'Delete a column (ADMIN+); a column holding tasks needs ?moveToKey= for them',
+  tags: ['Statuses'],
+  security: auth,
+  request: {
+    params: z.object({ projectId: pathId('projectId'), statusId: pathId('statusId') }),
+    query: z.object({ moveToKey: z.string().optional() }),
+  },
+  responses: { 204: { description: 'Deleted' }, 400: error, 403: error, 404: error, 409: error },
+});
+
 // ---- document --------------------------------------------------------------
 
 const generator = new OpenApiGeneratorV3(registry.definitions);
@@ -777,8 +1117,11 @@ export const openapiDocument = generator.generateDocument({
     'Scheduling',
     'Attachments',
     'Activity',
+    'Labels',
     'Notifications',
     'Dashboard',
     'AI',
+    'Labels',
+    'Statuses',
   ].map((name) => ({ name })),
 });
