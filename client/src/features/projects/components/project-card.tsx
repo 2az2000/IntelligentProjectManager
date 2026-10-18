@@ -19,7 +19,7 @@ export function ProjectCard({ project }: { project: Project }) {
   const ratio = total === 0 ? 0 : done / total;
 
   return (
-    <Link href={`/projects/${project.id}/board`} className="group block rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+    <Link href={`/app/projects/${project.id}/board`} className="group block rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
       <Card className="h-full transition-shadow duration-200 group-hover:shadow-lg">
         <CardHeader>
           <div className="flex items-start justify-between gap-2">

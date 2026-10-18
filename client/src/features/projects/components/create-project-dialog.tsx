@@ -91,7 +91,7 @@ export function CreateProjectDialog() {
                 reset();
                 setTemplateId('');
                 setOpen(false);
-                router.push(`/projects/${project.id}/board`);
+                router.push(`/app/projects/${project.id}/board`);
               },
               onError: (error) => toast.error(toMessage(error)),
             });

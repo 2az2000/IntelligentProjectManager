@@ -53,7 +53,7 @@ export function ProjectHeader({ projectId }: { projectId: number }) {
       </div>
       <nav className="flex gap-1 border-b" aria-label={t('views')}>
         {TABS.map(({ key, icon: Icon }) => {
-          const href = `/projects/${projectId}/${key}`;
+          const href = `/app/projects/${projectId}/${key}`;
           const active = pathname === href;
           return (
             <Link

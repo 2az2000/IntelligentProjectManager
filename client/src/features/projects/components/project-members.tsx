@@ -126,8 +126,8 @@ export function ProjectMembers({ project }: { project: Project }) {
                           <Trash2 className="size-4" />
                         </Button>
                       }
-                      title={t('removeTitle')}
-                      description={t('removeDescription', { name: m.user.name })}
+                      title={t('removeTitle', { name: m.user.name })}
+                      description={t('removeDescription')}
                       confirmLabel={t('remove')}
                       onConfirm={() => removeMember.mutate(m.user.id, { onError })}
                     />
@@ -143,7 +143,7 @@ export function ProjectMembers({ project }: { project: Project }) {
                       description={t('leaveDescription', { project: project.name })}
                       confirmLabel={t('leave')}
                       onConfirm={() =>
-                        removeMember.mutate(m.user.id, { onSuccess: () => router.replace('/projects'), onError })
+                        removeMember.mutate(m.user.id, { onSuccess: () => router.replace('/app/projects'), onError })
                       }
                     />
                   )}
