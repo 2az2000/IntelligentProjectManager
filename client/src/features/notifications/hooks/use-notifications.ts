@@ -58,7 +58,11 @@ export function useNotificationEvents(options?: { onOpenDigest?: () => void }) {
   const queryClient = useQueryClient();
   const t = useTranslations('Notifications');
   const onOpenDigest = useRef(options?.onOpenDigest);
-  onOpenDigest.current = options?.onOpenDigest;
+  // Kept in a ref (not a dependency) so the socket subscription below stays stable, but the
+  // write belongs in an effect: touching a ref during render is not allowed.
+  useEffect(() => {
+    onOpenDigest.current = options?.onOpenDigest;
+  }, [options?.onOpenDigest]);
 
   useEffect(() => {
     const socket = getRealtimeSocket();

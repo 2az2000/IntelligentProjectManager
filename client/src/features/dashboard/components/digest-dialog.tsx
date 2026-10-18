@@ -1,6 +1,6 @@
 'use client';
 
-import { AlarmClock, CalendarClock, Inbox } from 'lucide-react';
+import { AlarmClock, CalendarClock, CalendarRange, CheckCircle2, Inbox, Timer, TriangleAlert } from 'lucide-react';
 import { useLocale, useTranslations } from 'next-intl';
 import {
   Dialog,
@@ -12,16 +12,16 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { ErrorState } from '@/components/shared/error-state';
 import { TableSkeleton } from '@/components/shared/loading-skeletons';
-import { useTaskSheet } from '@/features/tasks/hooks/use-task-sheet';
+import { PriorityBadge, useTaskSheet } from '@/features/tasks';
 import { formatDate, formatNumber } from '@/lib/format';
+import { cn } from '@/lib/utils';
 import { useDigest } from '../hooks/use-dashboard';
-import { dashboardApi } from '../api/dashboard.api';
+import type { DashboardDigest, DigestTask } from '../api/dashboard.api';
 
 /**
  * §5 daily digest report: opened from the DAILY_DIGEST notification (bell item or its toast).
- * The fresh report comes from GET /dashboard/digest while the modal is open; if it was
- * already delivered by the 08:00 email, the dialog also shows the latest delivered snapshot
- * ("as seen in your mail") so the user can compare today's reality against the email.
+ * Shows the same payload the 08:00 email carried, refreshed on open — the numbers are the
+ * headline, the task list and the per-project split are the actual report.
  */
 export function DigestDialog({
   open,
@@ -30,109 +30,196 @@ export function DigestDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
-  const t = useTranslations('Notifications');
-  const locale = useLocale();
+  const t = useTranslations('Notifications.digest');
   const { openTask } = useTaskSheet();
   const fresh = useDigest(open);
 
-  const snapshot = fresh.data?.overdueByDays ?? 0;
-
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-lg">
+      <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-2xl">
         <DialogHeader>
-          <DialogTitle>{t('digest.title')}</DialogTitle>
-          <DialogDescription>{t('digest.subtitle')}</DialogDescription>
+          <DialogTitle>{t('title')}</DialogTitle>
+          <DialogDescription>{t('subtitle')}</DialogDescription>
         </DialogHeader>
 
         {fresh.isPending ? (
-          <TableSkeleton rows={3} />
+          <TableSkeleton rows={4} />
         ) : fresh.isError ? (
           <ErrorState error={fresh.error} onRetry={() => fresh.refetch()} />
-        ) : (
-          <div className="flex flex-col gap-4">
-            <div className="grid grid-cols-3 gap-2">
-              {snapshot > 0 && (
-                <div className="rounded-lg border p-3">
-                  <p className="text-muted-foreground flex items-center gap-1.5 text-xs">
-                    <Inbox className="size-3.5" aria-hidden />
-                    {t('digest.snapshot')}
-                  </p>
-                  <p className="mt-1 text-2xl font-semibold tabular-nums text-destructive">
-                    {snapshot}
-                  </p>
-                </div>
-              ))
-              <div className="rounded-lg border p-3">
-                <p className="text-muted-foreground flex items-center gap-1.5 text-xs">
-                  <Inbox className="size-3.5" aria-hidden />
-                  {t('digest.open')}
-                </p>
-                <p className="mt-1 text-2xl font-semibold tabular-nums">
-                  {formatNumber(fresh.data?.open ?? 0, locale)}
-                </p>
-              </div>
-              <div className="rounded-lg border p-3">
-                <p className="text-muted-foreground flex items-center gap-1.5 text-xs">
-                  <AlarmClock className="size-3.5" aria-hidden />
-                  {t('digest.overdue')}
-                </p>
-                <p
-                  className={`mt-1 text-2xl font-semibold tabular-nums ${
-                    (fresh.data?.overdue ?? 0) > 0 ? 'text-destructive' : ''
-                  }`}
-                >
-                  {formatNumber(fresh.data?.overdue ?? 0, locale)}
-                </p>
-              </div>
-              <div className="rounded-lg border p-3">
-                <p className="text-muted-foreground flex items-center gap-1.5 text-xs">
-                  <CalendarClock className="size-3.5" aria-hidden />
-                  {t('digest.dueToday')}
-                </p>
-                <p className="mt-1 text-2xl font-semibold tabular-nums">
-                  {formatNumber(fresh.data?.dueToday ?? 0, locale)}
-                </p>
-              </div>
-            </div>
-
-            {fresh.data.tasks.length === 0 ? (
-              <p className="text-muted-foreground text-sm">{t('digest.empty')}</p>
-            ) : (
-              <ul className="divide-y rounded-md border" role="list">
-                {fresh.data.tasks.map((task) => (
-                  <li key={task.id}>
-                    <button
-                      type="button"
-                      className="hover:bg-muted/60 flex w-full items-start justify-between gap-3 px-3 py-2 text-start"
-                      onClick={() => {
-                        onOpenChange(false);
-                        openTask(task.id);
-                      }}
-                    >
-                      <span className="min-w-0">
-                        <span className="block truncate text-sm font-medium">{task.title}</span>
-                        <span className="text-muted-foreground text-xs">
-                          {task.dueDate
-                            ? `${task.projectName} · ${formatDate(task.dueDate, locale)}${t('digest.overdue').startsWith('عقب') ? ' · ' : ' · '}`
-                            : task.projectName}
-                        </span>
-                      </span>
-                      {task.overdue && (
-                        <Badge variant="destructive">
-                          {locale === 'fa'
-                            ? t('digest.overdue', { n: task.overdueByDays })
-                            : t('digest.overdue', { n: task.overdueByDays })}
-                        </Badge>
-                      )}
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        )}
+        ) : fresh.data ? (
+          <DigestReport digest={fresh.data} onOpenTask={(id) => { onOpenChange(false); openTask(id); }} />
+        ) : null}
       </DialogContent>
     </Dialog>
+  );
+}
+
+function DigestReport({
+  digest,
+  onOpenTask,
+}: {
+  digest: DashboardDigest;
+  onOpenTask: (taskId: number) => void;
+}) {
+  const t = useTranslations('Notifications.digest');
+  const locale = useLocale();
+  const overdue = digest.tasks.filter((task) => task.overdue);
+  const dueToday = digest.tasks.filter((task) => !task.overdue);
+
+  return (
+    <div className="flex flex-col gap-5">
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+        <Stat
+          icon={<CalendarClock className="size-3.5" aria-hidden />}
+          label={t('dueToday')}
+          value={digest.dueToday}
+          emphasis={digest.dueToday > 0}
+        />
+        <Stat
+          icon={<AlarmClock className="size-3.5" aria-hidden />}
+          label={t('overdue')}
+          value={digest.overdue}
+          emphasis={digest.overdue > 0}
+          destructive
+        />
+        <Stat
+          icon={<CalendarRange className="size-3.5" aria-hidden />}
+          label={t('dueThisWeek')}
+          value={digest.dueThisWeek}
+        />
+        <Stat icon={<Timer className="size-3.5" aria-hidden />} label={t('inProgress')} value={digest.inProgress} />
+        <Stat
+          icon={<CheckCircle2 className="size-3.5" aria-hidden />}
+          label={t('completedSinceYesterday')}
+          value={digest.completedSinceYesterday}
+        />
+        <Stat icon={<Inbox className="size-3.5" aria-hidden />} label={t('open')} value={digest.open} />
+      </div>
+
+      {digest.overdueByDays > 0 && (
+        <p className="text-destructive -mt-2 flex items-center gap-1.5 text-xs">
+          <TriangleAlert className="size-3.5" aria-hidden />
+          {t('oldestOverdue', { days: digest.overdueByDays })}
+        </p>
+      )}
+
+      {digest.tasks.length === 0 ? (
+        <p className="text-muted-foreground text-sm">{t('empty')}</p>
+      ) : (
+        <>
+          {overdue.length > 0 && (
+            <TaskSection
+              title={t('overdue')}
+              tasks={overdue}
+              locale={locale}
+              onOpenTask={onOpenTask}
+            />
+          )}
+          {dueToday.length > 0 && (
+            <TaskSection title={t('dueToday')} tasks={dueToday} locale={locale} onOpenTask={onOpenTask} />
+          )}
+        </>
+      )}
+
+      {digest.perProject.length > 0 && (
+        <section className="flex flex-col gap-2">
+          <h3 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">{t('byProject')}</h3>
+          <ul className="divide-y rounded-md border text-sm">
+            {digest.perProject.map((project) => (
+              <li key={project.projectId} className="flex items-center justify-between gap-3 px-3 py-1.5">
+                <span className="min-w-0 truncate">{project.projectName}</span>
+                <span className="text-muted-foreground flex shrink-0 items-center gap-2 text-xs">
+                  <span className="tabular-nums">{t('openCount', { count: project.open })}</span>
+                  {project.overdue > 0 && (
+                    <Badge variant="destructive" className="tabular-nums">
+                      {t('overdueCount', { count: project.overdue })}
+                    </Badge>
+                  )}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+    </div>
+  );
+}
+
+function Stat({
+  icon,
+  label,
+  value,
+  emphasis = false,
+  destructive = false,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: number;
+  emphasis?: boolean;
+  destructive?: boolean;
+}) {
+  const locale = useLocale();
+  return (
+    <div className={cn('rounded-lg border p-3', emphasis && 'border-destructive/40')}>
+      <p className="text-muted-foreground flex items-center gap-1.5 text-xs">
+        {icon}
+        {label}
+      </p>
+      <p
+        className={cn(
+          'mt-1 text-2xl font-semibold tabular-nums',
+          destructive && value > 0 && 'text-destructive',
+        )}
+      >
+        {formatNumber(value, locale)}
+      </p>
+    </div>
+  );
+}
+
+function TaskSection({
+  title,
+  tasks,
+  locale,
+  onOpenTask,
+}: {
+  title: string;
+  tasks: DigestTask[];
+  locale: string;
+  onOpenTask: (taskId: number) => void;
+}) {
+  const t = useTranslations('Notifications.digest');
+
+  return (
+    <section className="flex flex-col gap-2">
+      <h3 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">{title}</h3>
+      <ul className="divide-y rounded-md border" role="list">
+        {tasks.map((task) => (
+          <li key={task.id}>
+            <button
+              type="button"
+              className="hover:bg-muted/60 flex w-full items-start justify-between gap-3 px-3 py-2 text-start"
+              onClick={() => onOpenTask(task.id)}
+            >
+              <span className="min-w-0">
+                <span className="block truncate text-sm font-medium">{task.title}</span>
+                <span className="text-muted-foreground mt-0.5 flex items-center gap-2 text-xs">
+                  <span className="truncate">{task.projectName}</span>
+                  {task.dueDate && <span>· {formatDate(task.dueDate, locale, { month: 'short', day: 'numeric' })}</span>}
+                </span>
+              </span>
+              <span className="flex shrink-0 items-center gap-2">
+                <PriorityBadge priority={task.priority} />
+                {task.overdueByDays > 0 && (
+                  <Badge variant="destructive" className="tabular-nums">
+                    {t('overdueBy', { days: task.overdueByDays })}
+                  </Badge>
+                )}
+              </span>
+            </button>
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }

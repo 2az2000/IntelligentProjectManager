@@ -3,6 +3,9 @@ import type { Db } from '../../shared/db/prisma';
 import { currentUserId, requireAuth } from '../../shared/auth/require-auth';
 import { handle } from '../../shared/http/handle';
 import { TASK_STATUSES, type TaskStatus } from '../tasks';
+import { buildDigest } from './digest';
+
+export { buildDigest, type Digest, type DigestTask, type DigestProject } from './digest';
 
 /**
  * Read model for the dashboard (CQRS read side): aggregate queries only, no business rules.
@@ -27,7 +30,12 @@ export class DashboardService {
     const projectIds = await this.projects.projectIdsForUser(userId);
 
     const live = { projectId: { in: projectIds }, deletedAt: null, project: { deletedAt: null } };
-    const mineOpen = { ...live, assigneeId: userId, status: { not: 'DONE' as const } };
+    // "Mine" means the user is on the task — as the lead or as a co-assignee — and it is not done.
+    const mineOpen = {
+      ...live,
+      status: { not: 'DONE' as const },
+      OR: [{ assigneeId: userId }, { collaborators: { some: { userId } } }],
+    };
 
     const [myOpenTasks, overdue, dueThisWeek, byStatusRows, completedThisWeek, upcoming, recent] =
       await Promise.all([
@@ -77,6 +85,15 @@ export class DashboardService {
       recentProjects: recent.map((p) => ({ ...p, updatedAt: p.updatedAt.toISOString() })),
     };
   }
+
+  /**
+   * §5 daily digest: exactly the payload the 08:00 email is rendered from, plus the concrete
+   * tasks behind the numbers — the notification client shows this report in a modal.
+   */
+  async digest(userId: number) {
+    const projectIds = await this.projects.projectIdsForUser(userId);
+    return buildDigest(this.db, { userId, projectIds, now: this.clock() });
+  }
 }
 
 export function createDashboardModule(deps: { db: Db; projects: ProjectMembership }) {
@@ -87,6 +104,12 @@ export function createDashboardModule(deps: { db: Db; projects: ProjectMembershi
     '/summary',
     handle({}, async (_input, req, res) => {
       res.json(await service.summary(currentUserId(req)));
+    }),
+  );
+  router.get(
+    '/digest',
+    handle({}, async (_input, req, res) => {
+      res.json(await service.digest(currentUserId(req)));
     }),
   );
   return { service, router };

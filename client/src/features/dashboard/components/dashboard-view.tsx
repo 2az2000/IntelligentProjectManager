@@ -127,7 +127,7 @@ function Upcoming({ items }: { items: DashboardSummary['upcoming'] }) {
     <Card className="lg:col-span-2">
       <CardHeader className="flex flex-row items-center justify-between">
         <CardTitle className="text-base">{t('upcomingTitle')}</CardTitle>
-        <Link href="/my-tasks" className="text-sm text-primary hover:underline">
+        <Link href="/app/my-tasks" className="text-sm text-primary hover:underline">
           {t('viewAll')}
         </Link>
       </CardHeader>
@@ -172,7 +172,7 @@ function RecentProjects({ items }: { items: DashboardSummary['recentProjects'] }
         {items.map((p) => (
           <Link
             key={p.id}
-            href={`/projects/${p.id}/board`}
+            href={`/app/projects/${p.id}/board`}
             className="flex flex-col rounded-lg border px-3 py-2 transition-colors hover:bg-muted/60"
           >
             <span className="text-sm font-medium">{p.name}</span>
