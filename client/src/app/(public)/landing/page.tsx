@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import Link from 'next/link';
 import { LandingAnimations } from './landing-animations';
 import './landing.css';
 
@@ -88,10 +89,11 @@ export default function LandingPage() {
             <a href="#logic">منطق</a>
             <a href="#stack">تکنولوژی</a>
             <a href="#flow">روش استفاده</a>
+            <Link href="/docs">داکیومنت</Link>
           </div>
-          <a className="btn btn--primary" href="/fa">
+          <Link className="btn btn--primary" href="/fa/app">
             ورود به سامانه
-          </a>
+          </Link>
         </nav>
 
         <div className="hero__grid container">
@@ -107,9 +109,9 @@ export default function LandingPage() {
               کاملاً آفلاین و راست‌به‌چپ.
             </p>
             <div className="hero__cta">
-              <a className="btn btn--primary btn--lg" href="/fa">
+              <Link className="btn btn--primary btn--lg" href="/fa/app">
                 ورود به سامانه <span aria-hidden>←</span>
-              </a>
+              </Link>
               <a className="btn btn--ghost btn--lg" href="#logic">
                 ببینید چطور فکر می‌کند
               </a>
@@ -354,12 +356,12 @@ export default function LandingPage() {
         <div className="container" data-reveal>
           <h2>پروژه‌ی بعدی را با عدد مدیریت کنید</h2>
           <div className="hero__cta hero__cta--center">
-            <a className="btn btn--primary btn--lg" href="/fa">
+            <Link className="btn btn--primary btn--lg" href="/fa/app">
               ورود به سامانه <span aria-hidden>←</span>
-            </a>
-            <a className="btn btn--ghost btn--lg btn--ghost-dark" href="#logic">
-              دوباره‌ی مستندات
-            </a>
+            </Link>
+            <Link className="btn btn--ghost btn--lg btn--ghost-dark" href="/docs">
+              داکیومنت کامل
+            </Link>
           </div>
           <p className="outro__fine">
             حساب نمونه: admin@example.com / Admin@12345 — کد منبع در دسترس تیم توسعه است.
