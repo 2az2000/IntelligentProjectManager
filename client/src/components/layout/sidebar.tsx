@@ -21,16 +21,16 @@ interface NavItem {
 }
 
 const NAV_ITEMS: NavItem[] = [
-  { key: 'dashboard', href: '/', icon: LayoutDashboard },
-  { key: 'projects', href: '/projects', icon: FolderKanban },
-  { key: 'myTasks', href: '/my-tasks', icon: CheckSquare },
-  { key: 'calendar', href: '/calendar', icon: Calendar },
-  { key: 'members', href: '/members', icon: Users },
-  { key: 'settings', href: '/settings', icon: Settings },
+  { key: 'dashboard', href: '/app/dashboard', icon: LayoutDashboard },
+  { key: 'projects', href: '/app/projects', icon: FolderKanban },
+  { key: 'myTasks', href: '/app/my-tasks', icon: CheckSquare },
+  { key: 'calendar', href: '/app/calendar', icon: Calendar },
+  { key: 'members', href: '/app/members', icon: Users },
+  { key: 'settings', href: '/app/settings', icon: Settings },
 ];
 
 function isActive(pathname: string, href: string) {
-  return href === '/' ? pathname === '/' : pathname === href || pathname.startsWith(`${href}/`);
+  return pathname === href || pathname.startsWith(`${href}/`);
 }
 
 export function Sidebar({ className, onNavigate }: { className?: string; onNavigate?: () => void }) {

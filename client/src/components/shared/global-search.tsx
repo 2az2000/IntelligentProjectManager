@@ -86,7 +86,7 @@ export function GlobalSearch() {
               {data!.projects.length > 0 && (
                 <Group label={t('projects')}>
                   {data!.projects.map((p) => (
-                    <Item key={p.id} onSelect={() => go(`/projects/${p.id}/board`)}>
+                    <Item key={p.id} onSelect={() => go(`/app/projects/${p.id}/board`)}>
                       {p.title}
                     </Item>
                   ))}
@@ -96,9 +96,7 @@ export function GlobalSearch() {
                 <Group label={t('tasks')}>
                   {data!.tasks.map((task) => (
                     <Item
-                      key={task.id}
-                      onSelect={() => go(`/projects/${task.projectId}/board?task=${task.id}`)}
-                    >
+                      key={task.id}                      onSelect={() => go(`/app/projects/${task.projectId}/board?task=${task.id}`)}>
                       <span className="line-clamp-1">{task.title}</span>
                       <span className="text-muted-foreground block text-xs">{task.projectTitle}</span>
                     </Item>
@@ -108,7 +106,7 @@ export function GlobalSearch() {
               {data!.comments.length > 0 && (
                 <Group label={t('comments')}>
                   {data!.comments.map((c) => (
-                    <Item key={c.id} onSelect={() => go(`/projects/1/board?task=${c.taskId}`)}>
+                    <Item key={c.id} onSelect={() => go(`/app/projects/1/board?task=${c.taskId}`)}>
                       <span className="line-clamp-1 text-xs">{c.snippet}</span>
                       <span className="text-muted-foreground block text-xs">{c.taskTitle}</span>
                     </Item>

@@ -3,7 +3,7 @@
 import { useEffect, type ReactNode } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Loader2 } from 'lucide-react';
-import { useTheme } from 'next-themes';
+import { useTheme, type Theme } from '@/lib/theme';
 import { ErrorState } from '@/components/shared/error-state';
 import { usePathname, useRouter } from '@/i18n/navigation';
 import { onUnauthorized } from '@/lib/api-client';
@@ -20,7 +20,7 @@ export function AuthGuard({ children }: { children: ReactNode }) {
 
   // Apply the theme saved in the user's profile.
   useEffect(() => {
-    if (user?.theme) setTheme(user.theme);
+    if (user?.theme) setTheme(user.theme as Theme);
   }, [user?.theme, setTheme]);
 
   // Session could not be refreshed by the API client ⇒ treat as signed out.

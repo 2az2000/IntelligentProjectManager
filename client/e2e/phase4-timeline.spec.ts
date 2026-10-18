@@ -48,7 +48,8 @@ test('timeline renders the CPM schedule from estimates and dependencies', async 
   // ---- link A → depends on B through the task sheet ---------------------------------------
   await page.getByText(taskA).first().click();
   const sheet = page.getByRole('dialog');
-  await expect(sheet.getByText('وابستگی‌ها')).toBeVisible();
+  // The task report also labels a dependencies tile — target the section heading.
+  await expect(sheet.getByRole('heading', { name: 'وابستگی‌ها' })).toBeVisible();
   await sheet.getByLabel('وابسته به').click();
   await page.getByRole('option', { name: taskB }).click();
   await expect(sheet.getByText(taskB, { exact: false }).first()).toBeVisible();

@@ -39,13 +39,13 @@ export function UserMenu() {
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
         <DropdownMenuItem asChild>
-          <Link href="/settings">
+          <Link href="/app/settings">
             <Settings className="me-2 size-4" aria-hidden />
             {t('settings')}
           </Link>
         </DropdownMenuItem>
         <DropdownMenuItem
-          onSelect={() => logout.mutate(undefined, { onSettled: () => router.replace('/login') })}
+          onSelect={() => logout.mutate(undefined, { onSettled: () => router.replace('/app/dashboard') })}
         >
           <LogOut className="me-2 size-4" aria-hidden />
           {t('logout')}

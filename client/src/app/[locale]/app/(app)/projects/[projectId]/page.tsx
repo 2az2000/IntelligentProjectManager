@@ -6,5 +6,5 @@ export default async function ProjectIndex({
   params: Promise<{ locale: string; projectId: string }>;
 }) {
   const { locale, projectId } = await params;
-  redirect({ href: `/projects/${projectId}/board`, locale });
+  redirect({ href: `/app/projects/${projectId}/board`, locale });
 }

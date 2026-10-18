@@ -4,6 +4,7 @@ import { Geist, Geist_Mono, Vazirmatn } from 'next/font/google';
 import { hasLocale, NextIntlClientProvider } from 'next-intl';
 import { setRequestLocale } from 'next-intl/server';
 import { Providers } from '@/components/layout/providers';
+import { ThemeScript } from '@/components/layout/theme-script';
 import { RegisterServiceWorker } from '@/components/pwa/register-sw';
 import { routing } from '@/i18n/routing';
 import { cn } from '@/lib/utils';
@@ -54,6 +55,8 @@ export default async function LocaleLayout({
       className={cn(geistSans.variable, geistMono.variable, vazirmatn.variable)}
     >
       <body className="flex min-h-screen flex-col bg-background text-foreground antialiased">
+        {/* Server-rendered so React executes it — paints the saved theme before hydration. */}
+        <ThemeScript />
         <NextIntlClientProvider>
           <SkipLink label={locale === 'fa' ? 'پرش به محتوای اصلی' : 'Skip to main content'} />
           <Providers>{children}</Providers>

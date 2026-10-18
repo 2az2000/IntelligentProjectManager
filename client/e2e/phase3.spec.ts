@@ -39,7 +39,13 @@ test('full collaboration flow: login → project → member → task → drag �
   // ---- invite member (search sara, add as MEMBER) ---------------------------------------
   await page.getByRole('navigation', { name: 'نماهای پروژه' }).getByRole('link', { name: 'تنظیمات' }).click();
   await page.getByLabel('جستجوی کاربر با نام یا ایمیل...').fill('sara');
-  await page.getByRole('button', { name: 'افزودن' }).click();
+  // The invite form now sits above the label/status managers, so "افزودن" alone is ambiguous:
+  // scope the click to sara's own candidate row.
+  await page
+    .locator('li')
+    .filter({ hasText: 'sara@example.com' })
+    .getByRole('button', { name: 'افزودن' })
+    .click();
   // Stable assertion: the new member appears in the list (the toast may expire quickly).
   const membersList = page.locator('ul').filter({ hasText: 'sara@example.com' });
   await expect(membersList).toBeVisible();
@@ -90,13 +96,14 @@ test('invalid login shows the translated Persian error', async ({ page }) => {
 });
 
 test('protected page redirects to login and comes back via ?next=', async ({ page }) => {
-  await page.goto('/fa/projects');
-  await expect(page).toHaveURL(/\/fa\/login\?next=%2Fprojects/);
+  // The app lives under /{locale}/app/… since phase 7, and `next` carries the locale-less path.
+  await page.goto('/fa/app/projects');
+  await expect(page).toHaveURL(/\/fa\/login\?next=%2Fapp%2Fprojects/);
 
   await page.getByLabel('ایمیل').fill(ADMIN.email);
   await page.getByLabel('رمز عبور').fill(ADMIN.password);
   await page.getByRole('button', { name: 'ورود' }).click();
 
-  await expect(page).toHaveURL(/\/fa\/projects$/);
+  await expect(page).toHaveURL(/\/fa\/app\/projects$/);
   await expect(page.getByRole('heading', { name: 'پروژه‌ها' })).toBeVisible();
 });
