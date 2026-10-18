@@ -2,7 +2,9 @@ import axios, { AxiosError, type InternalAxiosRequestConfig } from 'axios';
 
 export const apiClient = axios.create({
   baseURL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000',
-  headers: { 'Content-Type': 'application/json' },
+  // No default Content-Type: a global `application/json` makes axios serialize FormData
+  // bodies to JSON (breaking multipart uploads). Axios sets JSON itself for object bodies
+  // and multipart-with-boundary for FormData.
   // Auth uses httpOnly cookies set by the API; never store tokens in JS-accessible storage.
   withCredentials: true,
 });
@@ -67,7 +69,8 @@ function refreshSession(): Promise<void> {
 apiClient.interceptors.response.use(
   (response) => response,
   async (error: unknown) => {
-    const config = error instanceof AxiosError ? (error.config as RetriableConfig | undefined) : undefined;
+    const config =
+      error instanceof AxiosError ? (error.config as RetriableConfig | undefined) : undefined;
     const isAuthEndpoint = AUTH_ENDPOINTS.some((path) => config?.url?.startsWith(path));
     const is401 = error instanceof AxiosError && error.response?.status === 401;
 

@@ -1,11 +1,15 @@
 import type { Db } from '../../shared/db/prisma';
 import { UsersRepository } from './users.repository';
 import { UsersService } from './users.service';
-import { createUsersRouter } from './users.routes';
+import { createAvatarsRouter, createUsersRouter } from './users.routes';
 
 export function createUsersModule(deps: { db: Db }) {
   const service = new UsersService(new UsersRepository(deps.db));
-  return { service, router: createUsersRouter(service) };
+  return {
+    service,
+    router: createUsersRouter(service),
+    avatarsRouter: createAvatarsRouter(service),
+  };
 }
 
 export type { UsersService } from './users.service';
