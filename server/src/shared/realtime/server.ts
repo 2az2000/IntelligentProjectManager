@@ -12,10 +12,33 @@ const userRoom = (userId: number) => `user:${userId}`;
 /** socketId → userId, per project room, for the "who is online" indicator. */
 const presence = new Map<number, Set<number>>();
 
+/**
+ * §Imp §5 task-level presence: `${projectId}:${taskId}` → (socketId → userId).
+ *
+ * Keyed by socket rather than by user on purpose: the same person may have the task open in
+ * two tabs, and closing one must not make them vanish from the other. The users a screen
+ * renders are derived from the socket set, so they can never go negative.
+ */
+const taskViewers = new Map<string, Map<string, number>>();
+const taskKey = (projectId: number, taskId: number) => `${projectId}:${taskId}`;
+
 function updatePresence(io: Server, projectId: number) {
   io.to(projectRoom(projectId)).emit('presence:update', {
     projectId,
     userIds: [...(presence.get(projectId) ?? [])],
+  });
+}
+
+function viewersOf(projectId: number, taskId: number): number[] {
+  const sockets = taskViewers.get(taskKey(projectId, taskId));
+  return sockets ? [...new Set(sockets.values())].sort((a, b) => a - b) : [];
+}
+
+function updateTaskPresence(io: Server, projectId: number, taskId: number) {
+  io.to(projectRoom(projectId)).emit('task:presence', {
+    projectId,
+    taskId,
+    userIds: viewersOf(projectId, taskId),
   });
 }
 
@@ -49,17 +72,19 @@ export function createRealtimeServer(httpServer: http.Server, deps: { db: Db }):
     socket.join(userRoom(userId));
     let joinedProject: number | null = null;
 
-    socket.on('project:join', async (rawProjectId: unknown) => {
-      const projectId = Number(rawProjectId);
-      if (!Number.isInteger(projectId) || projectId <= 0) return;
-      if (joinedProject === projectId) return;
+    /**
+     * Membership gate + room switch in one place, so `project:join` and `task:join` can never
+     * disagree about who may listen. Returns false for a non-member.
+     */
+    const joinProject = async (projectId: number): Promise<boolean> => {
+      if (!Number.isInteger(projectId) || projectId <= 0) return false;
+      if (joinedProject === projectId) return true;
 
-      // Membership gate: no room for non-members.
       const member = await deps.db.projectMember.findUnique({
         where: { projectId_userId: { projectId, userId } },
         select: { projectId: true },
       });
-      if (!member) return;
+      if (!member) return false;
 
       if (joinedProject !== null) {
         socket.leave(projectRoom(joinedProject));
@@ -72,9 +97,53 @@ export function createRealtimeServer(httpServer: http.Server, deps: { db: Db }):
       set.add(userId);
       presence.set(projectId, set);
       updatePresence(io, projectId);
+      return true;
+    };
+
+    socket.on('project:join', (rawProjectId: unknown) => {
+      void joinProject(Number(rawProjectId));
+    });
+
+    /** Announce which task this tab has open; the project must already be joined. */
+    const leaveTask = (projectId: number, taskId: number) => {
+      const key = taskKey(projectId, taskId);
+      const sockets = taskViewers.get(key);
+      if (!sockets?.delete(socket.id)) return;
+      if (sockets.size === 0) taskViewers.delete(key);
+      updateTaskPresence(io, projectId, taskId);
+    };
+
+    socket.on('task:join', async (raw: unknown) => {
+      const projectId = Number((raw as { projectId?: unknown })?.projectId);
+      const taskId = Number((raw as { taskId?: unknown })?.taskId);
+      if (!Number.isInteger(projectId) || !Number.isInteger(taskId) || taskId <= 0) return;
+      // A task may open before its project room has finished joining — join on demand rather
+      // than silently dropping the first presence announcement.
+      if (!(await joinProject(projectId))) return;
+      const key = taskKey(projectId, taskId);
+      const sockets = taskViewers.get(key) ?? new Map<string, number>();
+      sockets.set(socket.id, userId);
+      taskViewers.set(key, sockets);
+      updateTaskPresence(io, projectId, taskId);
+    });
+
+    socket.on('task:leave', (raw: unknown) => {
+      const projectId = Number((raw as { projectId?: unknown })?.projectId);
+      const taskId = Number((raw as { taskId?: unknown })?.taskId);
+      if (!Number.isInteger(projectId) || !Number.isInteger(taskId)) return;
+      leaveTask(projectId, taskId);
     });
 
     socket.on('disconnect', () => {
+      // A closed tab must not stay "viewing" any task.
+      for (const [key, sockets] of taskViewers) {
+        if (!sockets.delete(socket.id)) continue;
+        const [projectPart, taskPart] = key.split(':');
+        if (sockets.size === 0) taskViewers.delete(key);
+        if (projectPart === undefined || taskPart === undefined) continue;
+        const projectId = Number(projectPart);
+        if (joinedProject === projectId) updateTaskPresence(io, projectId, Number(taskPart));
+      }
       if (joinedProject !== null) {
         presence.get(joinedProject)?.delete(userId);
         updatePresence(io, joinedProject);
@@ -88,6 +157,9 @@ export function createRealtimeServer(httpServer: http.Server, deps: { db: Db }):
   });
   subscribe('comment:created', (event) => {
     io.to(projectRoom(event.projectId)).emit('comment:created', event);
+  });
+  subscribe('comment:reaction', (event) => {
+    io.to(projectRoom(event.projectId)).emit('comment:reaction', event);
   });
   subscribe('notification:new', (event) => {
     io.to(userRoom(event.userId)).emit('notification:new', { type: event.type });

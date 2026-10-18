@@ -297,7 +297,13 @@
     "delete": "Delete comment",
     "edited": "edited",
     "save": "Save",
-    "cancel": "Cancel"
+    "cancel": "Cancel",
+    "react": "React",
+    "reactionsToggle": "Add a reaction",
+    "reactionBy": "Reacted by: {names}",
+    "removeReaction": "Remove reaction {emoji}",
+    "mentionEmpty": "No member matches that name",
+    "mentionLabel": "Mention a project member"
   },
   "Notifications": {
     "title": "Notifications",
@@ -468,7 +474,8 @@
     }
   },
   "Realtime": {
-    "onlineCount": "{count} online"
+    "onlineCount": "{count} online",
+    "viewingTask": "{count} others are viewing this task"
   },
   "Settings": {
     "title": "Settings",

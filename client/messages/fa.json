@@ -297,7 +297,13 @@
     "delete": "حذف نظر",
     "edited": "ویرایش‌شده",
     "save": "ذخیره",
-    "cancel": "انصراف"
+    "cancel": "انصراف",
+    "react": "واکنش",
+    "reactionsToggle": "افزودن واکنش",
+    "reactionBy": "واکنش‌ها: {names}",
+    "removeReaction": "برداشتن واکنش {emoji}",
+    "mentionEmpty": "عضوی با این نام پیدا نشد",
+    "mentionLabel": "منشن اعضای پروژه"
   },
   "Notifications": {
     "title": "اعلان‌ها",
@@ -468,7 +474,8 @@
     }
   },
   "Realtime": {
-    "onlineCount": "{count} نفر آنلاین"
+    "onlineCount": "{count} نفر آنلاین",
+    "viewingTask": "{count} نفر دیگر این تسک را باز کرده‌اند"
   },
   "Settings": {
     "title": "تنظیمات",

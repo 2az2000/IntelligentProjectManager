@@ -121,6 +121,13 @@ const TaskSchema = z
   })
   .openapi('Task');
 
+const CommentReactionSchema = z
+  .object({
+    emoji: z.string(),
+    users: z.array(z.object({ id: Id, name: z.string(), avatarUrl: z.string().nullable() })),
+  })
+  .openapi('CommentReaction');
+
 const CommentSchema = z
   .object({
     id: Id,
@@ -129,6 +136,9 @@ const CommentSchema = z
     body: z.string(),
     createdAt: z.string(),
     updatedAt: z.string(),
+    edited: z.boolean(),
+    /** Pre-grouped by emoji, in the server's fixed order. */
+    reactions: z.array(CommentReactionSchema),
   })
   .openapi('Comment');
 
@@ -634,6 +644,26 @@ register({
   security: auth,
   request: { params: z.object({ commentId: pathId('commentId') }) },
   responses: { 204: noContent(), 403: error, 404: error },
+});
+
+register({
+  method: 'post',
+  path: '/comments/{commentId}/reactions',
+  summary: 'Toggle an emoji reaction on a comment (same emoji again removes it)',
+  tags: ['Comments'],
+  security: auth,
+  request: {
+    params: z.object({ commentId: pathId('commentId') }),
+    body: {
+      content: json(z.object({ emoji: z.enum(['👍', '❤️', '🎉', '🚀', '👀', '😄']) })),
+      required: true,
+    },
+  },
+  responses: {
+    200: ok(z.object({ commentId: Id, reactions: z.array(CommentReactionSchema) })),
+    400: error,
+    404: error,
+  },
 });
 
 // ---- scheduling (phase 4) -------------------------------------------------

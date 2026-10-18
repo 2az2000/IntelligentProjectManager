@@ -17,6 +17,24 @@ export interface TaskAccess {
 }
 
 const authorSelect = { select: { id: true, name: true, avatarUrl: true } } as const;
+const reactionInclude = {
+  select: { emoji: true, user: authorSelect },
+  orderBy: { id: 'asc' },
+  // A long thread shouldn't carry hundreds of names for three emoji.
+  take: 200,
+} as const;
+
+/**
+ * The emoji a comment can carry. A closed set keeps the UI a row of buttons instead of a
+ * picker, and keeps the payload small enough to render on every comment in a thread.
+ */
+export const ALLOWED_REACTIONS = ['👍', '❤️', '🎉', '🚀', '👀', '😄'] as const;
+export type ReactionEmoji = (typeof ALLOWED_REACTIONS)[number];
+
+interface ReactionRow {
+  emoji: string;
+  user: { id: number; name: string; avatarUrl: string | null };
+}
 
 type CommentRow = {
   id: number;
@@ -25,6 +43,25 @@ type CommentRow = {
   author: { id: number; name: string; avatarUrl: string | null };
   createdAt: Date;
   updatedAt: Date;
+  reactions?: ReactionRow[];
+};
+
+/**
+ * Reactions travel pre-grouped by emoji: the client needs one chip per emoji, and grouping on
+ * the server means the aggregation can't disagree between two screens. `users` carries the names
+ * for the tooltip, so "who reacted" needs no second request.
+ */
+const groupReactions = (rows: ReactionRow[]) => {
+  const byEmoji = new Map<string, { emoji: string; users: ReactionRow['user'][] }>();
+  for (const row of rows) {
+    const entry = byEmoji.get(row.emoji) ?? { emoji: row.emoji, users: [] };
+    entry.users.push(row.user);
+    byEmoji.set(row.emoji, entry);
+  }
+  // Fixed order so chips don't jump when someone reacts.
+  return ALLOWED_REACTIONS.map((emoji) => byEmoji.get(emoji)).filter(
+    (entry): entry is { emoji: string; users: ReactionRow['user'][] } => entry !== undefined,
+  );
 };
 
 const toCommentDto = (c: CommentRow) => ({
@@ -35,7 +72,12 @@ const toCommentDto = (c: CommentRow) => ({
   createdAt: c.createdAt.toISOString(),
   updatedAt: c.updatedAt.toISOString(),
   edited: c.updatedAt.getTime() - c.createdAt.getTime() > 1000,
+  reactions: groupReactions(c.reactions ?? []),
 });
+
+export interface ReactionToggledHook {
+  (event: { commentId: number; taskId: number; projectId: number; actorId: number }): void;
+}
 
 export interface CommentCreatedHook {
   (event: {
@@ -52,7 +94,8 @@ export interface CommentCreatedHook {
 
 export class CommentService {
   /** Wired in the composition root (notifications + realtime broadcast). */
-  readonly hooks: { onCreated: CommentCreatedHook | null } = { onCreated: null };
+  readonly hooks: { onCreated: CommentCreatedHook | null; onReaction: ReactionToggledHook | null } =
+    { onCreated: null, onReaction: null };
 
   constructor(
     private readonly db: Db,
@@ -64,7 +107,7 @@ export class CommentService {
     await this.tasks.assertTaskAccess(userId, taskId, 'VIEWER');
     return this.db.comment.findMany({
       where: { taskId, deletedAt: null },
-      include: { author: authorSelect },
+      include: { author: authorSelect, reactions: reactionInclude },
       orderBy: { createdAt: 'asc' },
     });
   }
@@ -74,7 +117,7 @@ export class CommentService {
     const trimmed = body.trim();
     const created = await this.db.comment.create({
       data: { taskId, authorId: userId, body: trimmed },
-      include: { author: authorSelect },
+      include: { author: authorSelect, reactions: reactionInclude },
     });
 
     const task = await this.db.task.findUnique({
@@ -110,8 +153,40 @@ export class CommentService {
     return this.db.comment.update({
       where: { id: commentId },
       data: { body: body.trim() },
-      include: { author: authorSelect },
+      include: { author: authorSelect, reactions: reactionInclude },
     });
+  }
+
+  /**
+   * Toggle: the same person reacting with the same emoji twice removes it. A toggle keeps the
+   * client to one request per tap and makes a double-click a no-op instead of a duplicate row.
+   */
+  async toggleReaction(userId: number, commentId: number, emoji: string) {
+    const comment = await this.load(commentId);
+    const { projectId } = await this.tasks.assertTaskAccess(userId, comment.taskId, 'VIEWER');
+
+    const existing = await this.db.commentReaction.findUnique({
+      where: { commentId_userId_emoji: { commentId, userId, emoji } },
+      select: { id: true },
+    });
+    if (existing) {
+      await this.db.commentReaction.delete({ where: { id: existing.id } });
+    } else {
+      await this.db.commentReaction.create({ data: { commentId, userId, emoji } });
+    }
+
+    const rows = await this.db.commentReaction.findMany({
+      where: { commentId },
+      select: { emoji: true, user: authorSelect },
+      orderBy: { id: 'asc' },
+      take: 200,
+    });
+    try {
+      this.hooks.onReaction?.({ commentId, taskId: comment.taskId, projectId, actorId: userId });
+    } catch (err) {
+      logger.warn({ err }, 'comment onReaction hook failed');
+    }
+    return { commentId, reactions: groupReactions(rows) };
   }
 
   async remove(userId: number, commentId: number): Promise<void> {
@@ -152,6 +227,9 @@ export class CommentService {
 
 const id = z.coerce.number().int().positive();
 const bodySchema = z.object({ body: z.string().trim().min(1).max(5000) }).strict();
+const reactionSchema = z
+  .object({ emoji: z.enum(ALLOWED_REACTIONS) })
+  .strict();
 
 export function createCommentsModule(deps: { db: Db; tasks: TaskAccess }) {
   const service = new CommentService(deps.db, deps.tasks);
@@ -187,6 +265,16 @@ export function createCommentsModule(deps: { db: Db; tasks: TaskAccess }) {
       await service.remove(currentUserId(req), params.commentId);
       res.status(204).end();
     }),
+  );
+  // One endpoint toggles: a second tap with the same emoji removes it.
+  commentsRouter.post(
+    '/:commentId/reactions',
+    handle(
+      { params: z.object({ commentId: id }), body: reactionSchema },
+      async ({ params, body }, req, res) => {
+        res.json(await service.toggleReaction(currentUserId(req), params.commentId, body.emoji));
+      },
+    ),
   );
 
   return { service, taskCommentsRouter, commentsRouter };

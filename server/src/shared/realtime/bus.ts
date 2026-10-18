@@ -31,6 +31,13 @@ export interface CommentCreatedEvent {
   mentionedUserIds: number[];
 }
 
+export interface CommentReactionEvent {
+  projectId: number;
+  taskId: number;
+  commentId: number;
+  actorId: number;
+}
+
 export interface NotificationNewEvent {
   /** Delivered privately to the recipient's user room. */
   userId: number;
@@ -40,6 +47,7 @@ export interface NotificationNewEvent {
 export interface RealtimeEvents {
   'task:changed': TaskChangedEvent;
   'comment:created': CommentCreatedEvent;
+  'comment:reaction': CommentReactionEvent;
   'notification:new': NotificationNewEvent;
 }
 

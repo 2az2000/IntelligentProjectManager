@@ -66,6 +66,7 @@ model User {
   taskActivities      ActivityLog[]        @relation("ActivityActor")
   notifications       Notification[]       @relation("NotificationOwner")
   actedNotifications  Notification[]       @relation("NotificationActor")
+  commentReactions    CommentReaction[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -378,12 +379,31 @@ model Comment {
   taskId   Int
   authorId Int
 
-  task   Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
-  author User @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  task      Task              @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  author    User              @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  reactions CommentReaction[]
 
   deletedAt DateTime?
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
 
   @@index([taskId, createdAt])
+}
+
+///
+/// §Imp §5: a one-tap answer to a comment. Emoji are a closed set validated by the API, and the
+/// composite key makes "the same person reacted twice with the same emoji" impossible — reacting
+/// is a toggle, not a counter that can drift.
+model CommentReaction {
+  id        Int      @id @default(autoincrement())
+  commentId Int
+  userId    Int
+  /// One emoji from ALLOWED_REACTIONS (server-side allowlist).
+  emoji     String
+  comment   Comment  @relation(fields: [commentId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([commentId, userId, emoji])
+  @@index([commentId])
 }

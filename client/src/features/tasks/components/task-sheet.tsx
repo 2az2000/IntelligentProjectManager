@@ -22,11 +22,13 @@ import { Textarea } from '@/components/ui/textarea';
 import { ConfirmDialog } from '@/components/shared/confirm-dialog';
 import { DatePicker } from '@/components/shared/date-picker';
 import { ErrorState } from '@/components/shared/error-state';
+import { UserAvatar } from '@/components/shared/user-avatar';
 import { useCurrentUser } from '@/features/auth';
 import { ActivityTimeline } from '@/features/activity';
 import { AttachmentsSection } from '@/features/attachments';
 import { LabelPicker } from '@/features/labels';
 import { hasRole, useProject, useProjectMembers } from '@/features/projects';
+import { useTaskPresence } from '@/features/realtime';
 import { DependenciesSection } from '@/features/scheduling';
 import {
   FALLBACK_STATUSES,
@@ -77,6 +79,41 @@ export function TaskSheet() {
         )}
       </SheetContent>
     </Sheet>
+  );
+}
+
+/**
+ * §Imp §5 — task-level presence: "three people have this open" before you start editing, so two
+ * people don't quietly rewrite the same description. The server tracks sockets per task; this
+ * only renders the answer for the people we can name from the member list.
+ */
+function TaskViewers({
+  taskId,
+  projectId,
+  members,
+  selfId,
+}: {
+  taskId: number;
+  projectId: number;
+  members: { user: { id: number; name: string; avatarUrl: string | null } }[];
+  selfId: number | undefined;
+}) {
+  const t = useTranslations('Realtime');
+  const viewers = useTaskPresence(projectId, taskId);
+  const others = members
+    .filter((member) => viewers.includes(member.user.id) && member.user.id !== selfId)
+    .map((member) => member.user);
+  if (others.length === 0) return null;
+
+  return (
+    <div className="flex items-center gap-2 text-xs text-muted-foreground" role="status">
+      <div className="flex -space-x-2 space-x-reverse">
+        {others.slice(0, 4).map((user) => (
+          <UserAvatar key={user.id} user={user} className="size-6 ring-2 ring-background" />
+        ))}
+      </div>
+      <span>{t('viewingTask', { count: others.length })}</span>
+    </div>
   );
 }
 
@@ -137,6 +174,8 @@ function TaskDetailBody({ task }: { task: TaskDetail }) {
           className="h-auto border-none px-0 text-xl font-semibold shadow-none focus-visible:ring-0 disabled:opacity-100"
         />
       </SheetHeader>
+
+      <TaskViewers taskId={task.id} projectId={task.projectId} members={members} selfId={me?.id} />
 
       <div className="grid grid-cols-2 gap-x-4 gap-y-3">
         <Field label={t('statusLabel')} id="task-status">
@@ -246,7 +285,12 @@ function TaskDetailBody({ task }: { task: TaskDetail }) {
       )}
 
       <Separator />
-      <TaskComments taskId={task.id} canComment={canEdit} isAdmin={hasRole(role, 'ADMIN')} />
+      <TaskComments
+        taskId={task.id}
+        members={assignable}
+        canComment={canEdit}
+        isAdmin={hasRole(role, 'ADMIN')}
+      />
       <Separator />
       <AttachmentsSection taskId={task.id} canEdit={canEdit} />
       <Separator />

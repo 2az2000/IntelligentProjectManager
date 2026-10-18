@@ -34,6 +34,20 @@ export interface PresenceUpdateEvent {
   userIds: number[];
 }
 
+export interface CommentReactionEvent {
+  projectId: number;
+  taskId: number;
+  commentId: number;
+  actorId: number;
+}
+
+/** Who currently has one task open (avatars at the top of the task sheet). */
+export interface TaskPresenceEvent {
+  projectId: number;
+  taskId: number;
+  userIds: number[];
+}
+
 export interface NotificationNewEvent {
   type: string;
 }
@@ -42,7 +56,9 @@ export interface NotificationNewEvent {
 export const REALTIME_EVENTS = [
   'task:changed',
   'comment:created',
+  'comment:reaction',
   'presence:update',
+  'task:presence',
   'notification:new',
 ] as const;
 

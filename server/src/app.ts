@@ -191,6 +191,12 @@ export function createApp(deps: { db: Db } = { db: prisma }) {
     }
   };
 
+  // Reactions only broadcast: a toast for every emoji would be noise, and the thread invalidates
+  // itself so the chip counts stay honest.
+  comments.service.hooks.onReaction = (event) => {
+    publish('comment:reaction', event);
+  };
+
   app.use('/auth', auth.router);
   app.use('/users', users.router);
   app.use('/avatars', users.avatarsRouter);

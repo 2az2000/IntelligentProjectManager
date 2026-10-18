@@ -7,7 +7,8 @@ import {
   type UpdateTaskInput,
 } from '../api/task.api';
 import { byPosition, type DropPlan } from '../lib/ordering';
-import type { Task } from '../types';
+import { toggleReactionList } from '../lib/reactions';
+import type { Comment, Task, UserSummary } from '../types';
 
 /** Everything derived from tasks: lists, details, dashboard, project stats and team workload. */
 function invalidateTaskViews(queryClient: QueryClient) {
@@ -160,3 +161,40 @@ export const useEditComment = (taskId: number) =>
   useCommentMutation(taskId, ({ id, body }: { id: number; body: string }) => commentApi.update(id, body));
 export const useDeleteComment = (taskId: number) =>
   useCommentMutation(taskId, (id: number) => commentApi.remove(id));
+
+/**
+ * Reactions update optimistically: a tap must feel instant. The server answers with the grouped
+ * list, so the cache is replaced by the authoritative version on success and rolled back on
+ * failure — realtime then keeps other tabs in sync.
+ */
+export function useToggleReaction(taskId: number) {
+  const queryClient = useQueryClient();
+  const key = qk.comments.byTask(taskId);
+  return useMutation({
+    mutationFn: ({ commentId, emoji }: { commentId: number; emoji: string; me: UserSummary }) =>
+      commentApi.toggleReaction(commentId, emoji),
+    onMutate: async ({ commentId, emoji, me }) => {
+      await queryClient.cancelQueries({ queryKey: key });
+      const previous = queryClient.getQueryData<Comment[]>(key);
+      queryClient.setQueryData<Comment[]>(key, (comments) =>
+        comments?.map((comment) =>
+          comment.id === commentId
+            ? { ...comment, reactions: toggleReactionList(comment.reactions, emoji, me) }
+            : comment,
+        ),
+      );
+      return { previous };
+    },
+    onError: (_error, _vars, context) => {
+      if (context?.previous) queryClient.setQueryData(key, context.previous);
+    },
+    onSuccess: (result) =>
+      queryClient.setQueryData<Comment[]>(key, (comments) =>
+        comments?.map((comment) =>
+          comment.id === result.commentId
+            ? { ...comment, reactions: result.reactions }
+            : comment,
+        ),
+      ),
+  });
+}

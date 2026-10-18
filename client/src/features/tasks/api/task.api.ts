@@ -1,5 +1,12 @@
 import { apiClient } from '@/lib/api-client';
-import type { Comment, Task, TaskDetail, TaskPriority, TaskStatus } from '../types';
+import type {
+  Comment,
+  CommentReaction,
+  Task,
+  TaskDetail,
+  TaskPriority,
+  TaskStatus,
+} from '../types';
 
 export interface CreateTaskInput {
   title: string;
@@ -81,4 +88,10 @@ export const commentApi = {
   remove: async (commentId: number): Promise<void> => {
     await apiClient.delete(`/comments/${commentId}`);
   },
+  /** Toggle: the same emoji twice removes it, so one tap is one request. */
+  toggleReaction: async (
+    commentId: number,
+    emoji: string,
+  ): Promise<{ commentId: number; reactions: CommentReaction[] }> =>
+    (await apiClient.post(`/comments/${commentId}/reactions`, { emoji })).data,
 };

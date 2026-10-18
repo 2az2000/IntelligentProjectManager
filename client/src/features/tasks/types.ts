@@ -60,6 +60,12 @@ export interface TaskFilters {
   priority?: TaskPriority;
 }
 
+/** One emoji on a comment, pre-grouped by the server: everyone who reacted with it. */
+export interface CommentReaction {
+  emoji: string;
+  users: UserSummary[];
+}
+
 export interface Comment {
   id: number;
   taskId: number;
@@ -68,6 +74,8 @@ export interface Comment {
   createdAt: string;
   updatedAt: string;
   edited: boolean;
+  /** Only emoji someone actually used, in a stable order. */
+  reactions: CommentReaction[];
 }
 
 export const isOverdue = (task: Pick<Task, 'dueDate' | 'status'>, now = new Date()) =>
