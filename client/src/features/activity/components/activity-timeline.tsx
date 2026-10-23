@@ -2,6 +2,7 @@
 
 import { ArrowLeftRight, Pencil, Plus, Trash2 } from 'lucide-react';
 import { useLocale, useTranslations } from 'next-intl';
+import { Button } from '@/components/ui/button';
 import { UserAvatar } from '@/components/shared/user-avatar';
 import { formatDate, formatNumber, formatRelative } from '@/lib/format';
 import { cn } from '@/lib/utils';
@@ -134,7 +135,11 @@ export function ActivityTimeline({
 }) {
   const t = useTranslations('Activity');
   const locale = useLocale();
-  const { data: entries, isPending } = useActivity(taskId);
+  const { data, isPending, fetchNextPage, hasNextPage, isFetchingNextPage } = useActivity(taskId);
+  // Pages are appended in order, so a flat list keeps the newest-first timeline correct.
+  const entries = data?.pages.flatMap((page) => page.items) ?? [];
+  // Totals come from the server and cover every page, not just what is loaded.
+  const summary = data?.pages[0];
 
   const today = dayKey(new Date().toISOString());
   const label = (iso: string): string => {
@@ -147,21 +152,19 @@ export function ActivityTimeline({
   };
 
   const groups: { label: string; entries: ActivityEntry[] }[] = [];
-  for (const entry of entries ?? []) {
+  for (const entry of entries) {
     const current = groups[groups.length - 1];
     if (current && current.label === label(entry.createdAt)) current.entries.push(entry);
     else groups.push({ label: label(entry.createdAt), entries: [entry] });
   }
 
-  const people = new Set((entries ?? []).map((entry) => entry.actor.id)).size;
-
   return (
     <section className="flex flex-col gap-3">
       <div className="flex items-baseline justify-between gap-2">
         <h3 className="text-sm font-semibold">{t('title')}</h3>
-        {entries && entries.length > 0 && (
+        {summary && summary.total > 0 && (
           <span className="text-muted-foreground text-xs">
-            {t('summary', { changes: entries.length, people })}
+            {t('summary', { changes: summary.total, people: summary.people })}
           </span>
         )}
       </div>
@@ -184,6 +187,17 @@ export function ActivityTimeline({
               </ol>
             </div>
           ))}
+          {hasNextPage && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="self-start"
+              onClick={() => fetchNextPage()}
+              disabled={isFetchingNextPage}
+            >
+              {isFetchingNextPage ? t('loadingMore') : t('loadMore')}
+            </Button>
+          )}
         </div>
       )}
     </section>

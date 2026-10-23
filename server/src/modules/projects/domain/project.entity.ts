@@ -1,5 +1,8 @@
 import { ValidationError } from '../../../shared/errors';
 
+/** §4 WIP limits: workflow-column key → max open cards. Missing key = unlimited. */
+export type ColumnLimits = Record<string, number>;
+
 export interface ProjectProps {
   id: number;
   name: string;
@@ -7,6 +10,7 @@ export interface ProjectProps {
   startDate: Date | null;
   endDate: Date | null;
   ownerId: number;
+  columnLimits: ColumnLimits | null;
   archivedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
@@ -21,9 +25,20 @@ export interface NewProject {
   hourlyRate?: number | null;
   /** §6: approved budget — progress bar in the cost report. */
   budgetAmount?: number | null;
+  /** §4 WIP limits per column (null clears them all). */
+  columnLimits?: ColumnLimits | null;
 }
 
 export type ProjectChanges = Partial<NewProject>;
+
+/** Drops blank keys and non-positive limits so an empty map means "no limits". */
+export function normalizeColumnLimits(input: ColumnLimits | null | undefined): ColumnLimits | null {
+  if (!input) return null;
+  const entries = Object.entries(input)
+    .filter(([key, value]) => key.trim() !== '' && Number.isFinite(value) && value > 0)
+    .map(([key, value]) => [key.trim(), Math.floor(value)] as const);
+  return entries.length > 0 ? Object.fromEntries(entries) : null;
+}
 
 export type ValidNewProject = Required<NewProject> & { ownerId: number };
 
@@ -48,6 +63,7 @@ export class Project {
       endDate: input.endDate ?? null,
       hourlyRate: input.hourlyRate ?? null,
       budgetAmount: input.budgetAmount ?? null,
+      columnLimits: normalizeColumnLimits(input.columnLimits),
       ownerId,
     };
   }
@@ -75,6 +91,9 @@ export class Project {
     }
     if (changes.budgetAmount !== undefined && changes.budgetAmount !== null && changes.budgetAmount < 0) {
       throw new ValidationError(null, 'budgetAmount cannot be negative');
+    }
+    if (changes.columnLimits !== undefined) {
+      patch.columnLimits = normalizeColumnLimits(changes.columnLimits);
     }
     assertDates(
       changes.startDate !== undefined ? changes.startDate : this.props.startDate,

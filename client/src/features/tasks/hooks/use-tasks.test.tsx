@@ -5,7 +5,9 @@ import type { PropsWithChildren } from 'react';
 import { describe, expect, it } from 'vitest';
 import { server } from '@/test/msw-server';
 import { API, tasks as fixtures } from '@/test/handlers';
-import { useMoveTask, useProjectTasks } from './use-tasks';
+import { qk } from '@/lib/query-keys';
+import type { TaskDateConflict } from '../types';
+import { useMoveTask, useProjectTasks, useUpdateTask } from './use-tasks';
 
 function createWrapper() {
   const queryClient = new QueryClient({
@@ -35,6 +37,78 @@ describe('useProjectTasks', () => {
 
     await waitFor(() => expect(result.current.isError).toBe(true));
     expect(result.current.error).toMatchObject({ code: 'PROJECT_NOT_FOUND', status: 404 });
+  });
+});
+
+describe('useUpdateTask (date-vs-dependency warnings)', () => {
+  const conflict: TaskDateConflict = {
+    code: 'DEPENDENCY_DATE_CONFLICT',
+    direction: 'successor',
+    relatedTaskId: 2,
+    relatedTaskTitle: 'Set up CI',
+    conflictDays: 3,
+  };
+
+  function setup() {
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    });
+    const { result } = renderHook(() => useUpdateTask(), {
+      wrapper: ({ children }) => (
+        <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+      ),
+    });
+    return { queryClient, result };
+  }
+
+  it('keeps the warnings of a date edit outside the task cache', async () => {
+    server.use(
+      http.patch(`${API}/tasks/1`, () =>
+        HttpResponse.json({ ...fixtures[0]!, dueDate: '2026-11-05T00:00:00.000Z', warnings: [conflict] }),
+      ),
+    );
+    const { queryClient, result } = setup();
+
+    act(() => {
+      result.current.mutate({ taskId: 1, input: { dueDate: '2026-11-05T00:00:00.000Z' } });
+    });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    expect(queryClient.getQueryData(qk.taskWarnings(1))).toEqual([conflict]);
+    // The transient warning never leaks into the persisted task shape.
+    expect(queryClient.getQueryData<{ warnings?: unknown }>(qk.tasks.detail(1))?.warnings).toBeUndefined();
+  });
+
+  it('clears them on a later date edit that respects the chain', async () => {
+    server.use(
+      http.patch(`${API}/tasks/1`, () =>
+        HttpResponse.json({ ...fixtures[0]!, dueDate: '2026-11-20T00:00:00.000Z' }),
+      ),
+    );
+    const { queryClient, result } = setup();
+    queryClient.setQueryData(qk.taskWarnings(1), [conflict]);
+
+    act(() => {
+      result.current.mutate({ taskId: 1, input: { dueDate: '2026-11-20T00:00:00.000Z' } });
+    });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    expect(queryClient.getQueryData(qk.taskWarnings(1))).toEqual([]);
+  });
+
+  it('leaves the warnings alone when the edit is not about dates', async () => {
+    server.use(
+      http.patch(`${API}/tasks/1`, () => HttpResponse.json({ ...fixtures[0]!, title: 'Renamed' })),
+    );
+    const { queryClient, result } = setup();
+    queryClient.setQueryData(qk.taskWarnings(1), [conflict]);
+
+    act(() => {
+      result.current.mutate({ taskId: 1, input: { title: 'Renamed' } });
+    });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    expect(queryClient.getQueryData(qk.taskWarnings(1))).toEqual([conflict]);
   });
 });
 

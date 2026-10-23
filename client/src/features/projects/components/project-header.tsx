@@ -9,6 +9,7 @@ import { formatDate } from '@/lib/format';
 import { cn } from '@/lib/utils';
 // Via the barrel is safe: scheduling never imports the projects barrel (only deep paths).
 import { PredictedFinishBadge } from '@/features/scheduling';
+import { ProjectChat } from '@/features/ai';
 import { useProject } from '../hooks/use-projects';
 
 const TABS = [
@@ -34,7 +35,10 @@ export function ProjectHeader({ projectId }: { projectId: number }) {
           <Skeleton className="h-9 w-64" />
         ) : (
           <>
-            <h1 className="text-3xl font-bold tracking-tight">{project.name}</h1>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h1 className="text-3xl font-bold tracking-tight">{project.name}</h1>
+              <ProjectChat projectId={projectId} />
+            </div>
             <p className="mt-1 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
               <span>
                 {project.description}

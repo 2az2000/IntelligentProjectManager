@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { qk } from '@/lib/query-keys';
+import type { PlanConfidence } from '../analytics-types';
 import { analyticsApi } from '../api/analytics.api';
 
 const validId = (id: number | null | undefined): id is number =>
@@ -29,5 +30,17 @@ export function useBurndown(projectId: number) {
     queryKey: qk.analytics.burndown(projectId),
     queryFn: () => analyticsApi.burndown(projectId),
     enabled: validId(projectId),
+  });
+}
+
+/** §3 deadline planner — only runs for an explicit target date (Monte Carlo is not free). */
+export function usePlan(
+  projectId: number,
+  target: { by: string; confidence: PlanConfidence } | null,
+) {
+  return useQuery({
+    queryKey: qk.analytics.plan(projectId, target?.by ?? '', target?.confidence ?? 85),
+    queryFn: () => analyticsApi.plan(projectId, target!.by, target!.confidence),
+    enabled: validId(projectId) && target !== null,
   });
 }

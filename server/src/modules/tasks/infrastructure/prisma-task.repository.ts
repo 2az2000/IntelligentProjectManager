@@ -32,6 +32,7 @@ const toProps = (row: TaskRow): TaskProps => ({
   parentId: row.parentId,
   title: row.title,
   description: row.description,
+  descriptionHtml: row.descriptionHtml,
   status: row.status,
   statusKey: row.statusKey,
   priority: row.priority,

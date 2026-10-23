@@ -15,6 +15,7 @@ export const qk = {
   statuses: {
     byProject: (projectId: number) => ['statuses', 'project', projectId] as const,
   },
+  savedViews: (projectId: number) => ['saved-views', projectId] as const,
   team: ['team'] as const,
   teamWorkload: ['team', 'workload'] as const,
   tasks: {
@@ -26,6 +27,8 @@ export const qk = {
       ['tasks', 'calendar', from, to, scope] as const,
     trash: (projectId: number) => ['tasks', 'trash', projectId] as const,
   },
+  /** Advisory date-vs-dependency warnings of the last PATCH — written, never fetched. */
+  taskWarnings: (taskId: number) => ['task-warnings', taskId] as const,
   comments: {
     byTask: (taskId: number) => ['comments', taskId] as const,
   },
@@ -39,7 +42,10 @@ export const qk = {
     forecast: (projectId: number) => ['analytics', 'forecast', projectId] as const,
     risks: (projectId: number) => ['analytics', 'risks', projectId] as const,
     burndown: (projectId: number) => ['analytics', 'burndown', projectId] as const,
+    plan: (projectId: number, by: string, confidence: number) =>
+      ['analytics', 'plan', projectId, by, confidence] as const,
   },
+  searchStatus: ['search', 'status'] as const,
   time: {
     all: ['time'] as const,
     openTimer: ['time', 'open-timer'] as const,

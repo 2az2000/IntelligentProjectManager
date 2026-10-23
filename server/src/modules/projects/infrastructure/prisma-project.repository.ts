@@ -1,4 +1,4 @@
-import type { Prisma, Project as ProjectRow } from '@prisma/client';
+import { Prisma, type Project as ProjectRow } from '@prisma/client';
 import type { Db } from '../../../shared/db/prisma';
 import { DEFAULT_STATUSES } from '../../statuses';
 import { Project, type ProjectChanges, type ValidNewProject } from '../domain/project.entity';
@@ -21,6 +21,7 @@ const toEntity = (row: ProjectRow): Project =>
     startDate: row.startDate,
     endDate: row.endDate,
     ownerId: row.ownerId,
+    columnLimits: (row.columnLimits as Record<string, number> | null) ?? null,
     archivedAt: row.archivedAt,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
@@ -71,6 +72,8 @@ export class PrismaProjectRepository implements ProjectRepository {
     const row = await this.db.project.create({
       data: {
         ...data,
+        // Nullable JSON needs Prisma's explicit SQL-NULL marker, not a JS null.
+        columnLimits: data.columnLimits ?? Prisma.DbNull,
         members: { create: { userId: data.ownerId, role: 'OWNER' } },
         statuses: { create: DEFAULT_STATUSES.map((status) => ({ ...status })) },
       },
@@ -84,7 +87,14 @@ export class PrismaProjectRepository implements ProjectRepository {
   }
 
   async update(id: number, patch: ProjectChanges): Promise<void> {
-    await this.db.project.update({ where: { id }, data: patch });
+    const { columnLimits, ...rest } = patch;
+    await this.db.project.update({
+      where: { id },
+      data: {
+        ...rest,
+        ...(columnLimits !== undefined && { columnLimits: columnLimits ?? Prisma.DbNull }),
+      },
+    });
   }
 
   async softDelete(id: number, now: Date): Promise<void> {

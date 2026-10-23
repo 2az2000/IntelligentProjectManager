@@ -7,7 +7,14 @@ import { currentUserId, requireAuth } from '../../shared/auth/require-auth';
 import { handle } from '../../shared/http/handle';
 import { publish } from '../../shared/realtime/bus';
 
-export const NOTIFICATION_TYPES = ['ASSIGNED', 'COMMENTED', 'MENTIONED', 'DUE_REMINDER', 'DAILY_DIGEST'] as const;
+export const NOTIFICATION_TYPES = [
+  'ASSIGNED',
+  'COMMENTED',
+  'MENTIONED',
+  'DUE_REMINDER',
+  'DAILY_DIGEST',
+  'WEEKLY_SUMMARY',
+] as const;
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
 
 export interface NotificationInput {
@@ -23,18 +30,26 @@ const include = {
   task: { select: { id: true, title: true, projectId: true, project: { select: { id: true, name: true } } } },
 } as const;
 
-const toDto = (row: {
-  id: number;
-  type: string;
-  actor: { id: number; name: string; avatarUrl: string | null } | null;
-  task: { id: number; title: string; projectId: number; project: { id: number; name: string } } | null;
-  readAt: Date | null;
-  createdAt: Date;
-}) => ({
+
+const toDto = (
+  row: {
+    id: number;
+    type: string;
+    projectId: number | null;
+    actor: { id: number; name: string; avatarUrl: string | null } | null;
+    task: { id: number; title: string; projectId: number; project: { id: number; name: string } } | null;
+    readAt: Date | null;
+    createdAt: Date;
+  },
+  projectName: string | null,
+) => ({
   id: row.id,
   type: row.type,
   actor: row.actor,
   task: row.task ? { id: row.task.id, title: row.task.title, projectId: row.task.projectId, projectName: row.task.project.name } : null,
+  /** Set on project-level rows (WEEKLY_SUMMARY), where there is no task to carry it. */
+  projectId: row.projectId,
+  projectName,
   read: row.readAt !== null,
   createdAt: row.createdAt.toISOString(),
 });
@@ -70,7 +85,12 @@ export class NotificationService {
       orderBy: { createdAt: 'desc' },
       take: Math.min(limit, 50),
     });
-    return rows.map(toDto);
+    const projectIds = [...new Set(rows.map((row) => row.projectId).filter((id): id is number => id !== null))];
+    const projects = projectIds.length
+      ? await this.db.project.findMany({ where: { id: { in: projectIds } }, select: { id: true, name: true } })
+      : [];
+    const nameById = new Map(projects.map((p) => [p.id, p.name]));
+    return rows.map((row) => toDto(row, row.projectId === null ? null : (nameById.get(row.projectId) ?? null)));
   }
 
   async unreadCount(userId: number): Promise<number> {

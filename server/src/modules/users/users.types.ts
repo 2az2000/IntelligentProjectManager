@@ -10,6 +10,8 @@ export interface User {
   locale: string;
   theme: string | null;
   notifyEmail: boolean;
+  /** §4 onboarding: set when the first-run tour was finished or skipped. */
+  onboardedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -20,6 +22,7 @@ export interface UserProfileChanges {
   locale?: (typeof LOCALES)[number];
   theme?: (typeof THEMES)[number] | null;
   notifyEmail?: boolean;
+  onboardedAt?: Date | null;
 }
 
 export interface UserSearchResult {
@@ -37,6 +40,7 @@ export interface UserDto {
   locale: string;
   theme: string | null;
   notifyEmail: boolean;
+  onboardedAt: string | null;
 }
 
 export interface UserSummaryDto {
@@ -53,4 +57,5 @@ export const toUserDto = (user: User): UserDto => ({
   locale: user.locale,
   theme: user.theme,
   notifyEmail: user.notifyEmail,
+  onboardedAt: user.onboardedAt?.toISOString() ?? null,
 });

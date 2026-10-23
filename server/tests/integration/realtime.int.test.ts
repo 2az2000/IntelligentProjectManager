@@ -90,7 +90,8 @@ describe('activity log', () => {
     const activity = await agent.get(`/tasks/${taskId}/activity`);
     expect(activity.status).toBe(200);
 
-    const byAction = (action: string) => activity.body.filter((row: { action: string }) => row.action === action);
+    const byAction = (action: string) =>
+      activity.body.items.filter((row: { action: string }) => row.action === action);
     expect(byAction('created')).toHaveLength(1);
 
     const updated = byAction('updated');
@@ -118,7 +119,7 @@ describe('activity log', () => {
       .send({ description: 'Wire the billing webhook', tags: ['backend', 'billing'] });
 
     const activity = await agent.get(`/tasks/${taskId}/activity`);
-    const updated = activity.body.filter((row: { action: string }) => row.action === 'updated');
+    const updated = activity.body.items.filter((row: { action: string }) => row.action === 'updated');
     expect(updated.find((row: { field: string }) => row.field === 'description')).toMatchObject({
       oldValue: null,
       newValue: 'Wire the billing webhook',
@@ -128,8 +129,41 @@ describe('activity log', () => {
     expect(String(tagsRow.newValue)).toContain('billing');
 
     // The report is an audit trail: every row names who did it and when.
-    expect(activity.body[0].actor).toMatchObject({ id: expect.any(Number), name: expect.any(String) });
-    expect(new Date(activity.body[0].createdAt).getTime()).not.toBeNaN();
+    expect(activity.body.items[0].actor).toMatchObject({ id: expect.any(Number), name: expect.any(String) });
+    expect(new Date(activity.body.items[0].createdAt).getTime()).not.toBeNaN();
+  });
+
+  it('returns eight rows at a time and walks older pages by cursor', async () => {
+    const { project, agent } = await setup();
+    const created = await agent.post(`/projects/${project.id}/tasks`).send({ title: 'Busy task' });
+    const taskId = created.body.id;
+
+    // Nine single-field edits + the 'created' row = ten entries.
+    for (let points = 1; points <= 9; points += 1) {
+      await agent.patch(`/tasks/${taskId}`).send({ points });
+    }
+
+    const first = await agent.get(`/tasks/${taskId}/activity`);
+    expect(first.status).toBe(200);
+    expect(first.body.items).toHaveLength(8);
+    expect(first.body.total).toBe(10);
+    expect(first.body.people).toBe(1);
+    expect(first.body.nextCursor).toEqual(expect.any(Number));
+
+    const second = await agent.get(
+      `/tasks/${taskId}/activity?cursor=${first.body.nextCursor as number}`,
+    );
+    expect(second.status).toBe(200);
+    expect(second.body.items).toHaveLength(2);
+    expect(second.body.nextCursor).toBeNull();
+    // The pages are disjoint, so "load more" never repeats a row.
+    const firstIds = new Set(first.body.items.map((row: { id: number }) => row.id));
+    expect(second.body.items.some((row: { id: number }) => firstIds.has(row.id))).toBe(false);
+
+    // A larger page is allowed; the server still caps it.
+    const wide = await agent.get(`/tasks/${taskId}/activity?limit=25`);
+    expect(wide.body.items).toHaveLength(10);
+    expect(wide.body.nextCursor).toBeNull();
   });
 
   it('is member-only (viewers read it, outsiders get 403)', async () => {
@@ -195,6 +229,25 @@ describe('notifications', () => {
 
     const refreshed = await assigneeAgent.get('/notifications');
     expect(refreshed.body.every((n: { read: boolean }) => n.read)).toBe(true);
+  });
+
+  it('carries the project on project-level rows such as the weekly summary', async () => {
+    const { owner, project } = await setup();
+    await prisma.notification.create({
+      data: { userId: owner.id, type: 'WEEKLY_SUMMARY', projectId: project.id },
+    });
+    const agent = await loginAs(app, owner.email);
+
+    const list = await agent.get('/notifications');
+    expect(list.status).toBe(200);
+    expect(list.body).toHaveLength(1);
+    expect(list.body[0]).toMatchObject({
+      type: 'WEEKLY_SUMMARY',
+      task: null,
+      projectId: project.id,
+      projectName: project.name,
+      read: false,
+    });
   });
 
   it('hides notifications from other users', async () => {

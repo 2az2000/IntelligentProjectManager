@@ -18,6 +18,8 @@ export interface ProjectDto {
   owner: UserSummary;
   myRole: ProjectRole;
   memberCount: number;
+  /** §4 WIP limits per board column (null = unlimited). */
+  columnLimits: Record<string, number> | null;
   stats: ProjectStats;
   createdAt: string;
   updatedAt: string;
@@ -37,6 +39,7 @@ export function toProjectDto(view: ProjectView): ProjectDto {
     owner: view.owner,
     myRole: view.role,
     memberCount: view.memberCount,
+    columnLimits: p.columnLimits,
     stats: {
       total: view.stats.total,
       done: view.stats.done,

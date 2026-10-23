@@ -8,7 +8,7 @@ node_modules
 
 # local dev server logs
 /.dev-*.log
-docs
+# docs
 CLAUDE.md
 .freebuff/
 backups/

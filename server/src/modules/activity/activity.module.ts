@@ -23,6 +23,10 @@ export interface TaskActivityEvent {
   changes?: TaskFieldChange[];
 }
 
+/** One screenful of audit rows; "load more" fetches the next page with `cursor`. */
+export const ACTIVITY_PAGE_SIZE = 8;
+export const ACTIVITY_MAX_PAGE_SIZE = 50;
+
 export class ActivityService {
   constructor(
     private readonly db: Db,
@@ -62,25 +66,43 @@ export class ActivityService {
     }
   }
 
-  async list(userId: number, taskId: number, limit = 50) {
+  async list(
+    userId: number,
+    taskId: number,
+    { limit = ACTIVITY_PAGE_SIZE, cursor }: { limit?: number; cursor?: number } = {},
+  ) {
     await this.tasks.assertTaskAccess(userId, taskId, 'VIEWER');
-    const rows = await this.db.activityLog.findMany({
-      where: { taskId },
-      include: { actor: { select: { id: true, name: true, avatarUrl: true } } },
-      // `id` breaks ties: one change records several rows in a single createMany (same createdAt).
-      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-      take: Math.min(limit, 100),
-    });
-    return rows.map((row) => ({
-      id: row.id,
-      taskId: row.taskId,
-      action: row.action,
-      field: row.field,
-      oldValue: row.oldValue,
-      newValue: row.newValue,
-      actor: row.actor,
-      createdAt: row.createdAt.toISOString(),
-    }));
+    const take = Math.min(Math.max(limit, 1), ACTIVITY_MAX_PAGE_SIZE);
+    // `take + 1` is the peek that tells us whether another page exists without a second query.
+    const [rows, total, actors] = await Promise.all([
+      this.db.activityLog.findMany({
+        where: { taskId },
+        include: { actor: { select: { id: true, name: true, avatarUrl: true } } },
+        // `id` breaks ties: one change records several rows in a single createMany (same createdAt).
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        take: take + 1,
+        ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+      }),
+      this.db.activityLog.count({ where: { taskId } }),
+      // The header counts the whole history, not just the loaded page.
+      this.db.activityLog.groupBy({ by: ['actorId'], where: { taskId } }),
+    ]);
+    const page = rows.slice(0, take);
+    return {
+      items: page.map((row) => ({
+        id: row.id,
+        taskId: row.taskId,
+        action: row.action,
+        field: row.field,
+        oldValue: row.oldValue,
+        newValue: row.newValue,
+        actor: row.actor,
+        createdAt: row.createdAt.toISOString(),
+      })),
+      nextCursor: rows.length > take ? (page.at(-1)?.id ?? null) : null,
+      total,
+      people: actors.length,
+    };
   }
 }
 
@@ -98,9 +120,18 @@ export function createActivityRouter(service: ActivityService): Router {
 
   router.get(
     '/',
-    handle({ params: z.object({ taskId: id }) }, async ({ params }, req, res) => {
-      res.json(await service.list(currentUserId(req), params.taskId));
-    }),
+    handle(
+      {
+        params: z.object({ taskId: id }),
+        query: z.object({
+          limit: z.coerce.number().int().min(1).max(ACTIVITY_MAX_PAGE_SIZE).optional(),
+          cursor: z.coerce.number().int().positive().optional(),
+        }),
+      },
+      async ({ params, query }, req, res) => {
+        res.json(await service.list(currentUserId(req), params.taskId, query));
+      },
+    ),
   );
 
   return router;

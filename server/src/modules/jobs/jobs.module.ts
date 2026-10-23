@@ -6,6 +6,7 @@ import { logger } from '../../shared/logger';
 import type { Db } from '../../shared/db/prisma';
 import { publish } from '../../shared/realtime/bus';
 import { buildDigest, type Digest, type DigestTask } from '../dashboard/digest';
+import type { AiService } from '../ai/ai.service';
 
 const QUEUE_NAME = 'notifications';
 
@@ -22,8 +23,11 @@ interface ReminderJobData {
 interface DigestJobData {
   type: 'DAILY_DIGEST';
 }
+interface WeeklySummaryJobData {
+  type: 'WEEKLY_SUMMARY';
+}
 
-type JobData = ReminderJobData | DigestJobData;
+type JobData = ReminderJobData | DigestJobData | WeeklySummaryJobData;
 
 /**
  * Digest email template (fa/en by recipient locale), rendered from the very same `Digest` the
@@ -110,7 +114,7 @@ function dueReminderEmail(locale: string, name: string, taskTitle: string, dueIs
   return { subject: `Reminder: "${taskTitle}" is due tomorrow`, body: `Hi ${name}, the task "${taskTitle}" is due ${due}.\n` };
 }
 
-export function createJobsModule(deps: { db: Db }): Jobs {
+export function createJobsModule(deps: { db: Db; ai: AiService }): Jobs {
   // Tests (and any deployment without redis) run without background jobs.
   if (isTest || !env.JOBS_ENABLED) {
     return { scheduleDueReminder: async () => undefined, close: async () => undefined };
@@ -179,8 +183,71 @@ export function createJobsModule(deps: { db: Db }): Jobs {
     }
   };
 
+  /**
+   * §AI weekly project summary — Monday 08:00, for every live project that moved this week.
+   * One LLM call per language present among the members (not per member): the report text is
+   * shared, the notification/email is personal.
+   */
+  const processWeeklySummary = async (db: Db, ai: AiService) => {
+    const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    const projects = await db.project.findMany({
+      where: { deletedAt: null },
+      select: {
+        id: true,
+        name: true,
+        members: {
+          select: {
+            user: { select: { id: true, name: true, email: true, locale: true, notifyEmail: true } },
+          },
+        },
+      },
+    });
+
+    for (const project of projects) {
+      const [activity, completed] = await Promise.all([
+        db.activityLog.count({ where: { task: { projectId: project.id }, createdAt: { gte: since } } }),
+        db.task.count({ where: { projectId: project.id, deletedAt: null, completedAt: { gte: since } } }),
+      ]);
+      // A quiet project does not deserve a weekly email that says "nothing happened".
+      if (activity === 0 && completed === 0) continue;
+
+      const byLanguage = new Map<string, typeof project.members>();
+      for (const member of project.members) {
+        const language = member.user.locale === 'en' ? 'English' : 'Persian (Farsi)';
+        const group = byLanguage.get(language) ?? [];
+        group.push(member);
+        byLanguage.set(language, group);
+      }
+
+      for (const [language, members] of byLanguage) {
+        let summary: { markdown: string };
+        try {
+          summary = await ai.weeklySummaryForProject(project.id, language);
+        } catch (err) {
+          // One failure (rate limit, no key) must not abort the remaining projects.
+          logger.warn({ err, projectId: project.id }, 'Weekly summary generation failed');
+          break;
+        }
+        const isFa = language === 'Persian (Farsi)';
+        for (const { user } of members) {
+          await db.notification.create({ data: { userId: user.id, type: 'WEEKLY_SUMMARY', projectId: project.id } });
+          publish('notification:new', { userId: user.id, type: 'WEEKLY_SUMMARY' });
+          if (!user.notifyEmail) continue;
+          await mailer.sendMail({
+            from: 'noreply@managesys.local',
+            to: user.email,
+            subject: isFa ? `گزارش هفتگی «${project.name}»` : `Weekly report — ${project.name}`,
+            text: summary.markdown,
+          });
+          logger.info({ to: user.email, projectId: project.id }, 'weekly summary email (json transport)');
+        }
+      }
+    }
+  };
+
   const processor: Processor<JobData> = async (job: Job<JobData>) => {
     if (job.data.type === 'DUE_REMINDER') return processReminder(deps.db, job.data);
+    if (job.data.type === 'WEEKLY_SUMMARY') return processWeeklySummary(deps.db, deps.ai);
     return processDigest(deps.db);
   };
 
@@ -195,6 +262,15 @@ export function createJobsModule(deps: { db: Db }): Jobs {
       removeOnComplete: true,
     })
     .catch((err: unknown) => logger.warn({ err }, 'Failed to schedule digest job'));
+
+  // Monday 08:00 — the weekly report lands before the week's planning meeting.
+  void queue
+    .add('weekly-summary', { type: 'WEEKLY_SUMMARY' } satisfies WeeklySummaryJobData, {
+      jobId: 'weekly-summary',
+      repeat: { pattern: '0 8 * * 1' },
+      removeOnComplete: true,
+    })
+    .catch((err: unknown) => logger.warn({ err }, 'Failed to schedule weekly summary job'));
 
   return {
     async scheduleDueReminder(taskId: number) {

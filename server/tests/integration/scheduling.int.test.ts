@@ -144,6 +144,70 @@ describe('dependency endpoints', () => {
   });
 });
 
+describe('manual date warnings', () => {
+  const day = (d: number) => new Date(Date.UTC(2026, 0, d));
+
+  async function linkedTasks() {
+    const { owner, project, agent } = await setup();
+    const a = await createTask({ projectId: project.id, authorId: owner.id, title: 'A' });
+    const b = await createTask({ projectId: project.id, authorId: owner.id, title: 'B' });
+    await agent.post(`/projects/${project.id}/dependencies`).send({ predecessorId: a.id, successorId: b.id });
+    await prisma.task.update({ where: { id: a.id }, data: { dueDate: day(20) } });
+    return { project, agent, a, b };
+  }
+
+  it('answers a conflicting date edit with a non-blocking warning', async () => {
+    const { agent, a, b } = await linkedTasks();
+
+    // The write lands first: B starts ten days before its predecessor finishes.
+    const res = await agent.patch(`/tasks/${b.id}`).send({ startDate: day(10).toISOString() });
+    expect(res.status).toBe(200);
+    expect(res.body.startDate).toBe(day(10).toISOString());
+    expect(res.body.warnings).toEqual([
+      {
+        code: 'DEPENDENCY_DATE_CONFLICT',
+        direction: 'predecessor',
+        relatedTaskId: a.id,
+        relatedTaskTitle: 'A',
+        conflictDays: 10,
+      },
+    ]);
+
+    // …and the stored date is the one the user asked for.
+    const stored = await prisma.task.findUniqueOrThrow({ where: { id: b.id } });
+    expect(stored.startDate?.toISOString()).toBe(day(10).toISOString());
+  });
+
+  it('flags a predecessor whose due date now runs past a successor start', async () => {
+    const { agent, a, b } = await linkedTasks();
+    await prisma.task.update({ where: { id: b.id }, data: { startDate: day(10) } });
+
+    const res = await agent.patch(`/tasks/${a.id}`).send({ dueDate: day(15).toISOString() });
+    expect(res.status).toBe(200);
+    expect(res.body.warnings).toMatchObject([
+      { direction: 'successor', relatedTaskId: b.id, relatedTaskTitle: 'B', conflictDays: 5 },
+    ]);
+  });
+
+  it('stays silent for edits without dates and for dates that respect the chain', async () => {
+    const { agent, a, b } = await linkedTasks();
+
+    const noDates = await agent.patch(`/tasks/${b.id}`).send({ title: 'B renamed' });
+    expect(noDates.status).toBe(200);
+    expect(noDates.body).not.toHaveProperty('warnings');
+
+    const consistent = await agent.patch(`/tasks/${b.id}`).send({ startDate: day(25).toISOString() });
+    expect(consistent.status).toBe(200);
+    expect(consistent.body).not.toHaveProperty('warnings');
+
+    // A finished neighbour is history, not a constraint.
+    await prisma.task.update({ where: { id: a.id }, data: { status: 'DONE' } });
+    const done = await agent.patch(`/tasks/${b.id}`).send({ startDate: day(10).toISOString() });
+    expect(done.status).toBe(200);
+    expect(done.body).not.toHaveProperty('warnings');
+  });
+});
+
 describe('schedule endpoints', () => {
   it('computes the critical path from estimates and dependencies', async () => {
     const { owner, project, agent } = await setup();

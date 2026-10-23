@@ -1,5 +1,5 @@
 import { http, HttpResponse } from 'msw';
-import type { ActivityEntry } from '@/features/activity/types';
+import type { ActivityEntry, ActivityPage } from '@/features/activity/types';
 import type { Attachment } from '@/features/attachments/types';
 import type { ProjectDoc, TaskEnrichment } from '@/features/ai/types';
 import type { Notification } from '@/features/notifications/types';
@@ -29,6 +29,7 @@ export const project: Project = {
   myRole: 'OWNER',
   owner: admin,
   memberCount: 2,
+  columnLimits: null,
   stats: { total: 3, done: 1, overdue: 0, subtaskProgress: [] },
   createdAt: now,
   updatedAt: now,
@@ -107,6 +108,7 @@ const taskDefaults: Task = {
   parentId: null,
   title: '',
   description: null,
+  descriptionHtml: null,
   status: 'TODO',
   statusKey: 'TODO',
   priority: 'MEDIUM',
@@ -224,6 +226,8 @@ export const notifications: Notification[] = [
     type: 'ASSIGNED',
     actor: sara,
     task: { id: 1, title: 'Design hero section', projectId: 1, projectName: project.name },
+    projectId: 1,
+    projectName: project.name,
     read: false,
     createdAt: '2026-09-30T09:00:00.000Z',
   },
@@ -232,6 +236,8 @@ export const notifications: Notification[] = [
     type: 'MENTIONED',
     actor: sara,
     task: { id: 1, title: 'Design hero section', projectId: 1, projectName: project.name },
+    projectId: 1,
+    projectName: project.name,
     read: true,
     createdAt: '2026-09-29T15:00:00.000Z',
   },
@@ -259,6 +265,13 @@ export const activityEntries: ActivityEntry[] = [
     createdAt: '2026-09-30T08:00:00.000Z',
   },
 ];
+
+export const activityPage: ActivityPage = {
+  items: activityEntries,
+  nextCursor: null,
+  total: activityEntries.length,
+  people: new Set(activityEntries.map((entry) => entry.actor.id)).size,
+};
 
 export const attachments: Attachment[] = [
   {
@@ -318,7 +331,7 @@ export const handlers = [
   ),
   http.post(`${API}/notifications/read-all`, () => new HttpResponse(null, { status: 204 })),
   http.post(`${API}/notifications/:id/read`, () => new HttpResponse(null, { status: 204 })),
-  http.get(`${API}/tasks/1/activity`, () => HttpResponse.json(activityEntries)),
+  http.get(`${API}/tasks/1/activity`, () => HttpResponse.json(activityPage)),
   http.get(`${API}/tasks/1/attachments`, () => HttpResponse.json(attachments)),
   http.post(`${API}/tasks/1/attachments`, () =>
     HttpResponse.json(

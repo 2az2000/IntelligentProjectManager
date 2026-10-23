@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { MAX_DESCRIPTION_HTML } from '../domain/rich-text';
 import { MAX_TAGS, TASK_PRIORITIES, TASK_STATUSES } from '../domain/task.entity';
 
 const id = z.coerce.number().int().positive();
@@ -20,6 +21,8 @@ export const createTaskBody = z
   .object({
     title: z.string().trim().min(1).max(200),
     description: z.string().trim().max(10_000).optional(),
+    /** §4 rich text body; the server sanitizes it and derives `description` from it. */
+    descriptionHtml: z.string().trim().max(MAX_DESCRIPTION_HTML).optional(),
     // `statusKey` is the workflow column; `status` stays accepted as the legacy category spelling.
     statusKey: statusKey.optional(),
     status: z.enum(TASK_STATUSES).optional(),
@@ -39,6 +42,7 @@ export const updateTaskBody = z
   .object({
     title: z.string().trim().min(1).max(200),
     description: z.string().trim().max(10_000).nullable(),
+    descriptionHtml: z.string().trim().max(MAX_DESCRIPTION_HTML).nullable(),
     statusKey: statusKey,
     status: z.enum(TASK_STATUSES),
     priority: z.enum(TASK_PRIORITIES),

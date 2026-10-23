@@ -1,6 +1,15 @@
 import { useMutation } from '@tanstack/react-query';
 import { aiApi, type EnrichTaskInput } from '../api/ai.api';
-import type { AiMarkdown, ProjectDoc, TagSuggestions, TaskEnrichment } from '../types';
+import type {
+  AiMarkdown,
+  BreakdownResult,
+  ChatTurn,
+  ProjectChatResult,
+  ProjectDoc,
+  TagSuggestions,
+  TaskEnrichment,
+  WeeklySummary,
+} from '../types';
 
 /** No cache needed: AI previews are one-shot, expensive calls the user triggers explicitly. */
 export function useEnrichTask(projectId: number) {
@@ -33,5 +42,32 @@ export function useSummarizeThread() {
 export function useSuggestTags(projectId: number) {
   return useMutation({
     mutationFn: (input: EnrichTaskInput): Promise<TagSuggestions> => aiApi.suggestTags(projectId, input),
+  });
+}
+
+/** §AI PRD → task drafts (preview; the dialog applies them through the normal create API). */
+export function useBreakdown(projectId: number) {
+  return useMutation({
+    mutationFn: (prd: string): Promise<BreakdownResult> => aiApi.breakdown(projectId, prd),
+  });
+}
+
+/** §AI project chat — one mutation per turn; the dialog owns the transcript. */
+export function useProjectChat(projectId: number) {
+  return useMutation({
+    mutationFn: (messages: ChatTurn[]): Promise<ProjectChatResult> => aiApi.chat(projectId, messages),
+  });
+}
+
+/** §AI weekly summary, generated on demand (the Monday job reuses the same server method). */
+export function useWeeklySummary(projectId: number) {
+  return useMutation({
+    mutationFn: (): Promise<WeeklySummary> => aiApi.weeklySummary(projectId),
+  });
+}
+
+export function useBackfillEmbeddings(projectId: number) {
+  return useMutation({
+    mutationFn: () => aiApi.backfillEmbeddings(projectId),
   });
 }

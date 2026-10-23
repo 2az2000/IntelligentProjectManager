@@ -24,6 +24,7 @@ export function KanbanColumn({
   labels,
   readOnly,
   onOpen,
+  limit,
 }: {
   projectId: number;
   /** The project's workflow column this stack belongs to. */
@@ -33,6 +34,8 @@ export function KanbanColumn({
   labels?: Label[];
   readOnly: boolean;
   onOpen: (taskId: number) => void;
+  /** §4 WIP limit of this column (undefined = unlimited). */
+  limit?: number;
 }) {
   const t = useTranslations('Tasks');
   const ts = useTranslations('Tasks.status');
@@ -42,6 +45,7 @@ export function KanbanColumn({
   const [adding, setAdding] = useState(false);
   const [title, setTitle] = useState('');
   const createTask = useCreateTask(projectId);
+  const full = limit !== undefined && tasks.length >= limit;
 
   // Built-in columns read in the user's language; a custom column shows its own label.
   const label = ts.has(status.key) ? ts(status.key) : status.label;
@@ -64,8 +68,15 @@ export function KanbanColumn({
         <h3 className="flex items-center gap-2 font-semibold">
           <StatusDot color={status.color} />
           {label}
-          <span className="rounded-full bg-muted px-2 py-0.5 font-mono text-xs text-muted-foreground">
-            {formatNumber(tasks.length, locale)}
+          <span
+            className={cn(
+              'rounded-full px-2 py-0.5 font-mono text-xs',
+              full ? 'bg-destructive/15 text-destructive' : 'bg-muted text-muted-foreground',
+            )}
+          >
+            {limit === undefined
+              ? formatNumber(tasks.length, locale)
+              : `${formatNumber(tasks.length, locale)}/${formatNumber(limit, locale)}`}
           </span>
         </h3>
         {!readOnly && (
@@ -87,6 +98,8 @@ export function KanbanColumn({
           'flex min-h-[420px] flex-1 flex-col rounded-xl bg-muted/50 p-2',
           // Keep the target feedback soft and slow enough to follow the pointer smoothly.
           'transition-[background-color,box-shadow] duration-200 ease-out',
+          // §4 WIP limit: a full column is visible before anyone drags another card in.
+          full && 'ring-2 ring-destructive/40 ring-inset',
           isOver && 'bg-primary/5 ring-2 ring-primary/35 ring-inset',
         )}
       >

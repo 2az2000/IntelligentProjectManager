@@ -30,6 +30,11 @@ export const updateProjectBody = z
     hourlyRate: z.number().min(0).max(1_000_000).nullable().optional(),
     /** §6: total approved budget — drives the budget bar in the cost report. */
     budgetAmount: z.number().min(0).max(1_000_000_000).nullable().optional(),
+    /** §4 WIP limits per workflow column, e.g. {"IN_PROGRESS": 5}; null clears them. */
+    columnLimits: z
+      .record(z.string().max(40), z.number().int().min(0).max(200))
+      .nullable()
+      .optional(),
   })
   .partial()
   .strict()

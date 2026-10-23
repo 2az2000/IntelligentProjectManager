@@ -65,9 +65,16 @@ export function useUpdateTask() {
   return useMutation({
     mutationFn: ({ taskId, input }: { taskId: number; input: UpdateTaskInput }) =>
       taskApi.update(taskId, input),
-    onSuccess: (task) => {
+    onSuccess: (task, { input }) => {
+      const { warnings, ...rest } = task;
+      // §4 Productivity — a manual date that contradicts a dependency. Kept in its own cache
+      // entry rather than a mutation callback: the sheet body remounts on `updatedAt`, so a
+      // per-call `onSuccess` would be dropped before the banner could show it.
+      if (warnings?.length || input.startDate !== undefined || input.dueDate !== undefined) {
+        queryClient.setQueryData(qk.taskWarnings(task.id), warnings ?? []);
+      }
       queryClient.setQueryData(qk.tasks.detail(task.id), (old: object | undefined) =>
-        old ? { ...old, ...task } : old,
+        old ? { ...old, ...rest } : old,
       );
       return invalidateTaskViews(queryClient);
     },

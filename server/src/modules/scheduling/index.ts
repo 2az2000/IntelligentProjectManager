@@ -26,6 +26,8 @@ export function createSchedulingModule(deps: { db: Db; projects: ProjectAccess }
 }
 
 export { buildSchedule } from './application/schedule';
+export { findDependencyDateConflicts } from './domain/date-conflicts';
+export type { TaskDateConflict } from './domain/date-conflicts';
 export type {
   ScheduleResult,
   ScheduledTask,

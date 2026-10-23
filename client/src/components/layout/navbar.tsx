@@ -8,6 +8,7 @@ import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 import { UserMenu } from '@/features/auth';
 import { NotificationBell } from '@/features/notifications';
 import { GlobalSearch } from '@/components/shared/global-search';
+import { CommandPalette } from './command-palette';
 import { Link } from '@/i18n/navigation';
 import { ModeToggle } from './mode-toggle';
 import { Sidebar } from './sidebar';
@@ -42,11 +43,24 @@ export function Navbar() {
         </div>
 
         <div className="ms-auto flex items-center gap-1 md:ms-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="hidden gap-1.5 text-muted-foreground md:inline-flex"
+            onClick={() => window.dispatchEvent(new Event('open-command-palette'))}
+            aria-label={t('commandPalette')}
+          >
+            <span className="text-xs">{t('commandPalette')}</span>
+            <kbd className="rounded border px-1 text-[10px]" aria-hidden>
+              ⌘K
+            </kbd>
+          </Button>
           <NotificationBell />
           <ModeToggle />
           <UserMenu />
         </div>
       </div>
+      <CommandPalette />
     </header>
   );
 }

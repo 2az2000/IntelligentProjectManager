@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useSearchParams } from 'next/navigation';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Loader2, Plus, Trash2 } from 'lucide-react';
 import { useLocale, useTranslations } from 'next-intl';
 import { toast } from 'sonner';
@@ -18,7 +19,6 @@ import {
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet';
-import { Textarea } from '@/components/ui/textarea';
 import { ConfirmDialog } from '@/components/shared/confirm-dialog';
 import { DatePicker } from '@/components/shared/date-picker';
 import { ErrorState } from '@/components/shared/error-state';
@@ -40,11 +40,20 @@ import { useErrorMessage } from '@/hooks/use-error-message';
 import { Link } from '@/i18n/navigation';
 import { toDayIso } from '@/lib/calendar';
 import { formatDate, formatNumber } from '@/lib/format';
+import { qk } from '@/lib/query-keys';
 import type { UpdateTaskInput } from '../api/task.api';
 import { toAssigneeIds } from '../lib/assignees';
-import { useCreateTask, useDeleteTask, useTask, useUpdateTask } from '../hooks/use-tasks';
+import {
+  useCreateTask,
+  useDeleteTask,
+  useRestoreTask,
+  useTask,
+  useUpdateTask,
+} from '../hooks/use-tasks';
 import { useTaskSheet } from '../hooks/use-task-sheet';
-import type { TaskDetail } from '../types';
+import type { TaskDateConflict, TaskDetail } from '../types';
+import { DateConflictNotice } from './date-conflict-notice';
+import { RichTextEditor, plainToHtml } from './rich-text-editor';
 import { TaskComments } from './task-comments';
 import { TaskReport } from './task-report';
 import { TimeTracker } from './time-tracker';
@@ -57,6 +66,17 @@ export function TaskSheet() {
   const taskId = param ? Number(param) : null;
   const { closeTask } = useTaskSheet();
   const { data: task, isPending, isError, error, refetch } = useTask(taskId);
+  // §4 Productivity — the last PATCH's date-vs-dependency warnings. They live in their own cache
+  // entry (written by `useUpdateTask`) because the sheet body remounts on every save and would
+  // drop local state. Never fetched: `enabled` is false, only a mutation writes here.
+  const queryClient = useQueryClient();
+  const { data: conflicts = [] } = useQuery({
+    queryKey: qk.taskWarnings(taskId ?? 0),
+    queryFn: () => [] as TaskDateConflict[],
+    enabled: false,
+    staleTime: Infinity,
+    gcTime: Infinity,
+  });
 
   return (
     <Sheet open={taskId !== null} onOpenChange={(open) => !open && closeTask()}>
@@ -75,7 +95,12 @@ export function TaskSheet() {
             <Loader2 className="size-6 animate-spin text-muted-foreground" />
           </div>
         ) : (
-          <TaskDetailBody key={`${task.id}-${task.updatedAt}`} task={task} />
+          <TaskDetailBody
+            key={`${task.id}-${task.updatedAt}`}
+            task={task}
+            conflicts={conflicts}
+            onDismissWarnings={() => queryClient.setQueryData(qk.taskWarnings(task.id), [])}
+          />
         )}
       </SheetContent>
     </Sheet>
@@ -117,7 +142,15 @@ function TaskViewers({
   );
 }
 
-function TaskDetailBody({ task }: { task: TaskDetail }) {
+function TaskDetailBody({
+  task,
+  conflicts,
+  onDismissWarnings,
+}: {
+  task: TaskDetail;
+  conflicts: TaskDateConflict[];
+  onDismissWarnings: () => void;
+}) {
   const t = useTranslations('Tasks');
   const locale = useLocale();
   const toMessage = useErrorMessage();
@@ -130,6 +163,7 @@ function TaskDetailBody({ task }: { task: TaskDetail }) {
   const statuses = sortStatuses(projectStatuses ?? FALLBACK_STATUSES);
   const update = useUpdateTask();
   const remove = useDeleteTask();
+  const restore = useRestoreTask(task.projectId);
 
   const role = project?.myRole ?? 'VIEWER';
   const canEdit = hasRole(role, 'MEMBER');
@@ -139,7 +173,9 @@ function TaskDetailBody({ task }: { task: TaskDetail }) {
     members.find((m) => m.user.id === Number(id))?.user.name ?? null;
 
   const [title, setTitle] = useState(task.title);
-  const [description, setDescription] = useState(task.description ?? '');
+  const [descriptionHtml, setDescriptionHtml] = useState(
+    task.descriptionHtml ?? plainToHtml(task.description),
+  );
   // Plain strings, exactly as the API stores them — labels are a presentation layer on top.
   const [tags, setTags] = useState<string[]>(task.tags);
   const [points, setPoints] = useState(task.points?.toString() ?? '');
@@ -176,6 +212,12 @@ function TaskDetailBody({ task }: { task: TaskDetail }) {
       </SheetHeader>
 
       <TaskViewers taskId={task.id} projectId={task.projectId} members={members} selfId={me?.id} />
+
+      <DateConflictNotice
+        conflicts={conflicts}
+        onOpenTask={(id) => openTask(id)}
+        onDismiss={onDismissWarnings}
+      />
 
       <div className="grid grid-cols-2 gap-x-4 gap-y-3">
         <Field label={t('statusLabel')} id="task-status">
@@ -261,15 +303,17 @@ function TaskDetailBody({ task }: { task: TaskDetail }) {
       <TaskReport task={task} statuses={statuses} />
 
       <Field label={t('descriptionLabel')} id="task-description">
-        <Textarea
-          id="task-description"
-          rows={4}
-          value={description}
+        {/* §4 rich text: sanitized server-side, plain-text twin kept for search/AI. */}
+        <RichTextEditor
+          value={descriptionHtml}
+          editable={canEdit}
           placeholder={t('descriptionPlaceholder')}
-          disabled={!canEdit}
-          onChange={(e) => setDescription(e.target.value)}
+          onChange={setDescriptionHtml}
           onBlur={() => {
-            if (description.trim() !== (task.description ?? '')) save({ description: description.trim() || null });
+            const current = task.descriptionHtml ?? plainToHtml(task.description);
+            if (descriptionHtml !== current) {
+              save({ descriptionHtml: descriptionHtml.trim() ? descriptionHtml : null });
+            }
           }}
         />
       </Field>
@@ -315,7 +359,20 @@ function TaskDetailBody({ task }: { task: TaskDetail }) {
             onConfirm={() =>
               remove.mutate(task.id, {
                 onSuccess: () => {
-                  toast.success(t('deleted'));
+                  // §4 undo: deleting is reversible for a few seconds (soft delete + restore).
+                  toast.success(t('deleted'), {
+                    action: {
+                      label: t('undo'),
+                      onClick: () =>
+                        restore.mutate(task.id, {
+                          onSuccess: () => {
+                            toast.success(t('restored'));
+                            openTask(task.id);
+                          },
+                          onError: (error) => toast.error(toMessage(error)),
+                        }),
+                    },
+                  });
                   if (task.parentId) openTask(task.parentId);
                   else closeTask();
                 },

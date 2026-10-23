@@ -1,12 +1,13 @@
 'use client';
 
 import { useState } from 'react';
-import { AlarmClock, AtSign, Bell, CheckCheck, Mail, MessageSquare, UserPlus } from 'lucide-react';
+import { AlarmClock, AtSign, BarChart3, Bell, CheckCheck, Mail, MessageSquare, UserPlus } from 'lucide-react';
 import { useLocale, useTranslations } from 'next-intl';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { UserAvatar } from '@/components/shared/user-avatar';
 import { DigestDialog } from '@/features/dashboard/components/digest-dialog';
+import { useRouter } from '@/i18n/navigation';
 import { useTaskSheet } from '@/features/tasks/hooks/use-task-sheet';
 import { formatRelative } from '@/lib/format';
 import {
@@ -24,12 +25,14 @@ const TYPE_ICON: Record<NotificationType, typeof Bell> = {
   MENTIONED: AtSign,
   DUE_REMINDER: AlarmClock,
   DAILY_DIGEST: Mail,
+  WEEKLY_SUMMARY: BarChart3,
 };
 
 export function NotificationBell() {
   const t = useTranslations('Notifications');
   const locale = useLocale();
   const { openTask } = useTaskSheet();
+  const router = useRouter();
   const { data: unread = 0 } = useUnreadCount();
   const { data: notifications = [], isPending } = useNotifications();
   const markRead = useMarkNotificationRead();
@@ -42,7 +45,9 @@ export function NotificationBell() {
   const open = (notification: Notification) => {
     if (!notification.read) markRead.mutate(notification.id);
     if (notification.type === 'DAILY_DIGEST') setDigestOpen(true);
-    else if (notification.task) openTask(notification.task.id);
+    else if (notification.type === 'WEEKLY_SUMMARY' && notification.projectId) {
+      router.push(`/app/projects/${notification.projectId}/settings`);
+    } else if (notification.task) openTask(notification.task.id);
   };
 
   return (
@@ -106,7 +111,7 @@ export function NotificationBell() {
                         {t(`types.${notification.type}`, {
                           actor: notification.actor?.name ?? t('system'),
                           task: notification.task?.title ?? '',
-                          project: notification.task?.projectName ?? '',
+                          project: notification.task?.projectName ?? notification.projectName ?? '',
                         })}
                       </span>
                       <span className="text-muted-foreground text-[10px]">

@@ -11,6 +11,8 @@ import type {
 export interface CreateTaskInput {
   title: string;
   description?: string;
+  /** §4 rich text body — the server sanitizes it and derives `description`. */
+  descriptionHtml?: string;
   /** Target workflow column of the project (`ProjectStatus.key`). */
   statusKey?: string;
   /** The column's analytics bucket — accepted as a legacy alias by the API. */
@@ -30,6 +32,7 @@ export interface CreateTaskInput {
 export interface UpdateTaskInput {
   title?: string;
   description?: string | null;
+  descriptionHtml?: string | null;
   statusKey?: string;
   /** Category-level edit ("mark done" from a cross-project list) — resolves to that column. */
   status?: TaskStatus;

@@ -1,6 +1,10 @@
 import { prisma, type Db } from '../../../shared/db/prisma';
+import { env } from '../../../config/env';
 import { NotFoundError, ValidationError } from '../../../shared/errors';
 import type { ProjectRole } from '../../projects';
+import { parseWeekend } from '../domain/work-calendar';
+import { HolidayCalendar } from '../domain/holidays';
+import { buildDeadlinePlan, type DeadlinePlan, type PlanConfidence } from '../domain/deadline-plan';
 import {
   probabilityWithin,
   runMonteCarlo,
@@ -64,7 +68,75 @@ export class AnalyticsService {
     private readonly db: Db = prisma,
     private readonly access: ProjectAccess,
     private readonly clock: () => Date = () => new Date(),
+    private readonly weekend: Set<number> = parseWeekend(env.WORKING_WEEKEND),
   ) {}
+
+  private holidayCache: { at: number; cal: HolidayCalendar } | null = null;
+
+  /** Official holidays for the planner's date math (cached 10 min — small table). */
+  private async loadHolidays(): Promise<HolidayCalendar> {
+    const now = Date.now();
+    if (this.holidayCache && now - this.holidayCache.at < 10 * 60 * 1000) return this.holidayCache.cal;
+    const rows = await this.db.holiday.findMany();
+    const cal = new HolidayCalendar(rows.map((h) => ({ date: h.date, title: h.title, isRecurring: h.isRecurring })));
+    this.holidayCache = { at: now, cal };
+    return cal;
+  }
+
+  /**
+   * §3 deadline planner: "we must ship by X — when must each task start?".
+   *
+   * Uses the Monte Carlo percentile for total effort (so the plan inherits the same uncertainty
+   * the forecast admits) and shifts every CPM node by the resulting buffer. Only auto-scheduled
+   * task timings are implied — the UI must not silently rewrite manual dates.
+   */
+  async getPlan(
+    userId: number,
+    projectId: number,
+    input: { by?: string; confidence?: PlanConfidence },
+  ): Promise<DeadlinePlan> {
+    await this.access.assertRole(projectId, userId, 'VIEWER');
+    const project = await this.db.project.findFirst({
+      where: { id: projectId, deletedAt: null },
+      select: { startDate: true, endDate: true },
+    });
+    if (!project) throw new NotFoundError('PROJECT_NOT_FOUND', 'Project not found');
+
+    const deadlineInput = input.by ?? project.endDate?.toISOString();
+    if (!deadlineInput) {
+      throw new ValidationError(null, 'This project has no deadline — pass ?by=YYYY-MM-DD');
+    }
+    const deadline = new Date(deadlineInput);
+    if (Number.isNaN(deadline.getTime())) throw new ValidationError(null, 'Invalid deadline');
+
+    const now = this.clock();
+    const anchor = project.startDate && project.startDate > now ? project.startDate : now;
+    if (deadline.getTime() <= anchor.getTime()) {
+      throw new ValidationError(null, 'The deadline must be in the future');
+    }
+
+    const confidence: PlanConfidence = input.confidence ?? 85;
+    const { tasks, deps } = await loadScheduleInput(this.db, projectId);
+    const mc = runMonteCarlo(
+      tasks.map((t) => ({ id: t.id, estimateHours: t.estimateHours, status: t.status })),
+      deps,
+      (nodes, edges) => calculateCriticalPath(nodes, edges),
+      { runs: 2000 },
+    );
+    const requiredHours = confidence === 50 ? mc.p50 : confidence === 95 ? mc.p95 : mc.p85;
+    const holidays = await this.loadHolidays();
+
+    return buildDeadlinePlan({
+      tasks,
+      deps,
+      anchor,
+      deadline,
+      requiredHours,
+      confidence,
+      weekend: this.weekend,
+      holidays,
+    });
+  }
 
   /** Monte Carlo percentile forecast — reuses the exact CPM engine from phase 4. */
   async getForecast(userId: number, projectId: number): Promise<ForecastResult> {

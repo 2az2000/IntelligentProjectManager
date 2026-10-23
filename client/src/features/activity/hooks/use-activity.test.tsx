@@ -19,8 +19,11 @@ describe('useActivity', () => {
     const { result } = renderHook(() => useActivity(1), { wrapper: createWrapper() });
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
-    expect(result.current.data).toEqual(fixture);
-    expect(result.current.data?.[0]).toMatchObject({
+    const page = result.current.data?.pages[0];
+    expect(page?.items).toEqual(fixture);
+    expect(page?.total).toBe(fixture.length);
+    expect(page?.nextCursor).toBeNull();
+    expect(page?.items[0]).toMatchObject({
       action: 'updated',
       field: 'status',
       oldValue: 'TODO',

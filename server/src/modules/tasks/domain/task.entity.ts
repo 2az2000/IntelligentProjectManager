@@ -14,6 +14,8 @@ export interface TaskProps {
   parentId: number | null;
   title: string;
   description: string | null;
+  /** §4 sanitized rich text body; `description` is its plain-text twin. */
+  descriptionHtml: string | null;
   /** Analytics bucket of the project column below (drives doneness, progress charts). */
   status: TaskStatus;
   /** The project's workflow column (`ProjectStatus.key`) this task sits in. */
@@ -38,6 +40,7 @@ export interface TaskProps {
 export interface TaskChanges {
   title?: string;
   description?: string | null;
+  descriptionHtml?: string | null;
   status?: TaskStatus;
   statusKey?: string;
   priority?: TaskPriority;
@@ -92,6 +95,7 @@ export class Task {
       parentId: input.parentId ?? null,
       title,
       description: input.description?.trim() || null,
+      descriptionHtml: input.descriptionHtml ?? null,
       status,
       statusKey,
       priority: input.priority ?? 'MEDIUM',
@@ -137,6 +141,9 @@ export class Task {
       if (!patch.title) throw new ValidationError(null, 'Task title is required');
     }
     if (changes.description !== undefined) patch.description = changes.description?.trim() || null;
+    if (changes.descriptionHtml !== undefined) {
+      patch.descriptionHtml = changes.descriptionHtml?.trim() || null;
+    }
     if (changes.tags !== undefined) patch.tags = normalizeTags(changes.tags);
     if (changes.estimateHours != null && changes.estimateHours < 0) {
       throw new ValidationError(null, 'Estimate hours cannot be negative');

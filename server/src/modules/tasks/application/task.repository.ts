@@ -63,6 +63,7 @@ export type TaskPatch = Partial<
     TaskProps,
     | 'title'
     | 'description'
+    | 'descriptionHtml'
     | 'status'
     | 'statusKey'
     | 'priority'

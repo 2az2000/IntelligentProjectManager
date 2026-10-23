@@ -1,5 +1,11 @@
 import { apiClient } from '@/lib/api-client';
-import type { BurndownResult, ForecastResult, RiskResult } from '../analytics-types';
+import type {
+  BurndownResult,
+  DeadlinePlan,
+  ForecastResult,
+  PlanConfidence,
+  RiskResult,
+} from '../analytics-types';
 
 export const analyticsApi = {
   /** GET /projects/:id/forecast — Monte Carlo percentiles (§3). */
@@ -13,4 +19,12 @@ export const analyticsApi = {
   /** GET /projects/:id/burndown — remaining work over time (§3). */
   burndown: async (projectId: number): Promise<BurndownResult> =>
     (await apiClient.get<BurndownResult>(`/projects/${projectId}/burndown`)).data,
+
+  /** GET /projects/:id/plan?by=&confidence= — latest start per task for a target date (§3). */
+  plan: async (projectId: number, by: string, confidence: PlanConfidence): Promise<DeadlinePlan> =>
+    (
+      await apiClient.get<DeadlinePlan>(`/projects/${projectId}/plan`, {
+        params: { by, confidence },
+      })
+    ).data,
 };

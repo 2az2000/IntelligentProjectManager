@@ -6,7 +6,7 @@ import { isTest } from '../../config/env';
 import { currentUserId, requireAuth } from '../../shared/auth/require-auth';
 import { handle } from '../../shared/http/handle';
 import type { AiService } from './ai.service';
-import { enrichTaskBody, projectIdParams } from './ai.schemas';
+import { breakdownBody, chatBody, enrichTaskBody, projectIdParams } from './ai.schemas';
 import { taskIdParams } from '../tasks/http/task.schemas';
 
 const standupQuery = z.object({ date: z.coerce.date().optional() }).strict();
@@ -60,6 +60,42 @@ export function createAiRouter(service: AiService): Router {
     aiLimiter,
     handle({ params: projectIdParams, body: enrichTaskBody }, async ({ params, body }, req, res) => {
       res.json(await service.suggestTags(currentUserId(req), params.projectId, body));
+    }),
+  );
+
+  // §2 PRD → a previewed task breakdown (the client creates through normal endpoints).
+  router.post(
+    '/breakdown',
+    aiLimiter,
+    handle({ params: projectIdParams, body: breakdownBody }, async ({ params, body }, req, res) => {
+      res.json(await service.breakdownPrd(currentUserId(req), params.projectId, body));
+    }),
+  );
+
+  // §AI project chat — read-only, scoped by the asking user's role (VIEWER+).
+  router.post(
+    '/chat',
+    aiLimiter,
+    handle({ params: projectIdParams, body: chatBody }, async ({ params, body }, req, res) => {
+      res.json(await service.chatAboutProject(currentUserId(req), params.projectId, body));
+    }),
+  );
+
+  // §AI weekly summary, generated on demand (the Monday job uses the same service method).
+  router.post(
+    '/weekly-summary',
+    aiLimiter,
+    handle({ params: projectIdParams }, async ({ params }, req, res) => {
+      res.json(await service.weeklySummary(currentUserId(req), params.projectId));
+    }),
+  );
+
+  // §AI semantic search backfill for tasks created before embeddings were enabled.
+  router.post(
+    '/embeddings/backfill',
+    aiLimiter,
+    handle({ params: projectIdParams }, async ({ params }, req, res) => {
+      res.json(await service.embedProjectTasks(currentUserId(req), params.projectId));
     }),
   );
 

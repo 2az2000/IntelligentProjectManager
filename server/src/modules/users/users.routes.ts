@@ -17,6 +17,8 @@ const updateMeBody = z
     locale: z.enum(LOCALES),
     theme: z.enum(THEMES).nullable(),
     notifyEmail: z.boolean(),
+    /** §4 onboarding: the client stamps this once the tour is finished or skipped. */
+    onboardedAt: z.coerce.date().nullable(),
   })
   .partial()
   .strict();

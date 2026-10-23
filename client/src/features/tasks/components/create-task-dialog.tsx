@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Loader2, Plus, Sparkles, X } from 'lucide-react';
@@ -24,6 +24,7 @@ import { sortStatuses, type ProjectStatus } from '@/features/statuses';
 import { useErrorMessage } from '@/hooks/use-error-message';
 import { toDayIso } from '@/lib/calendar';
 import { taskApi } from '../api/task.api';
+import { OPEN_CREATE_TASK_EVENT } from '../hooks/use-task-shortcuts';
 import { useCreateTask } from '../hooks/use-tasks';
 import { taskFormSchema, type TaskFormValues } from '../schemas/task.schema';
 import type { UserSummary } from '../types';
@@ -53,6 +54,12 @@ export function CreateTaskDialog({
 }) {
   const t = useTranslations('Tasks');
   const [open, setOpen] = useState(false);
+  // §4 `C` shortcut — the page-level hook only broadcasts; the dialog owns its open state.
+  useEffect(() => {
+    const openDialog = () => setOpen(true);
+    window.addEventListener(OPEN_CREATE_TASK_EVENT, openDialog);
+    return () => window.removeEventListener(OPEN_CREATE_TASK_EVENT, openDialog);
+  }, []);
   const toMessage = useErrorMessage();
   const createTask = useCreateTask(projectId);
   const enrich = useEnrichTask(projectId);

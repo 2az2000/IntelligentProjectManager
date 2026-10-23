@@ -8,6 +8,15 @@ export interface ActivityActor {
   avatarUrl: string | null;
 }
 
+/** One cursor page (`GET /tasks/:taskId/activity`); totals cover the whole history. */
+export interface ActivityPage {
+  items: ActivityEntry[];
+  /** Pass back as `cursor` to fetch the next (older) page; null on the last page. */
+  nextCursor: number | null;
+  total: number;
+  people: number;
+}
+
 export interface ActivityEntry {
   id: number;
   taskId: number;

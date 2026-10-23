@@ -24,6 +24,8 @@ export interface Project {
   owner: UserSummary;
   myRole: ProjectRole;
   memberCount: number;
+  /** §4 WIP limits per board column (null = unlimited). */
+  columnLimits: Record<string, number> | null;
   stats: {
     total: number;
     done: number;

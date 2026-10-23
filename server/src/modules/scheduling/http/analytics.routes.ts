@@ -75,7 +75,7 @@ export function createHolidaysRouter(): Router {
   return router;
 }
 
-/** Mounted at /projects/:projectId/forecast · /risks · /burndown (all GET, VIEWER+). */
+/** Mounted at /projects/:projectId/forecast · /risks · /burndown · /plan (all GET, VIEWER+). */
 export function createAnalyticsRouter(analytics: AnalyticsService): Router {
   const router = Router({ mergeParams: true });
   router.use(requireAuth);
@@ -111,6 +111,29 @@ export function createAnalyticsRouter(analytics: AnalyticsService): Router {
           query.from?.toISOString(),
           query.to?.toISOString(),
         ),
+      );
+    }),
+  );
+
+  // §3 deadline planner: `?by=YYYY-MM-DD&confidence=50|85|95`.
+  const planQuery = z
+    .object({
+      by: z.coerce.date().optional(),
+      confidence: z.coerce
+        .number()
+        .pipe(z.union([z.literal(50), z.literal(85), z.literal(95)]))
+        .optional(),
+    })
+    .strict();
+
+  router.get(
+    '/plan',
+    handle({ params: projectIdParams, query: planQuery }, async ({ params, query }, req, res) => {
+      res.json(
+        await analytics.getPlan(currentUserId(req), params.projectId, {
+          by: query.by?.toISOString(),
+          confidence: query.confidence,
+        }),
       );
     }),
   );

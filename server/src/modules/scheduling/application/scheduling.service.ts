@@ -3,6 +3,7 @@ import { ConflictError, NotFoundError, ValidationError } from '../../../shared/e
 import { env } from '../../../config/env';
 import type { ProjectRole } from '../../projects';
 import { buildSchedule, type ScheduleResult, type ScheduleTask } from './schedule';
+import { findDependencyDateConflicts, type TaskDateConflict } from '../domain/date-conflicts';
 import { parseWeekend } from '../domain/work-calendar';
 import { HolidayCalendar, addWorkingHoursWithHolidays } from '../domain/holidays';
 
@@ -63,6 +64,15 @@ export class ScheduleService {
     await this.access.assertRole(projectId, userId, 'VIEWER');
     const { tasks, deps } = await loadScheduleInput(this.db, projectId);
     return buildSchedule(tasks, deps, this.weekend);
+  }
+
+  /**
+   * §Productivity: manual-date conflicts with the dependency graph, after an edit was applied.
+   * Internal check (the tasks module already authorized the caller), so no role assertion here.
+   */
+  async findDateWarnings(projectId: number, taskId: number): Promise<TaskDateConflict[]> {
+    const { tasks, deps } = await loadScheduleInput(this.db, projectId);
+    return findDependencyDateConflicts({ taskId, tasks, deps });
   }
 
   async getTaskSchedule(userId: number, taskId: number): Promise<ScheduleResult> {

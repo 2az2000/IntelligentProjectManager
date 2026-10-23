@@ -46,7 +46,7 @@ export function BoardFilters({
   const active = !!filters.search || filters.priority !== undefined || filters.assigneeId !== undefined;
 
   return (
-    <div className="mb-4 flex flex-wrap items-center gap-2">
+    <div className="mb-4 flex flex-wrap items-center gap-2" data-tour="filters">
       <div className="relative w-full sm:w-64">
         <Search className="pointer-events-none absolute start-2.5 top-2.5 size-4 text-muted-foreground" />
         <Input

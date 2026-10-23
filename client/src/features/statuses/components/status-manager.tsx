@@ -300,7 +300,7 @@ function AddStatus({ projectId, statuses }: { projectId: number; statuses: Proje
           </SelectContent>
         </Select>
         <Select value={afterKey} onValueChange={setAfterKey}>
-          <SelectTrigger className="w-48" aria-label={t('after')}>
+          <SelectTrigger className="w-48" aria-label={t('afterLabel')}>
             <SelectValue placeholder={t('afterEnd')} />
           </SelectTrigger>
           <SelectContent>

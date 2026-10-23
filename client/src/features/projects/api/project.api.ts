@@ -13,6 +13,8 @@ export interface ProjectInput {
   description?: string | null;
   startDate?: string | null;
   endDate?: string | null;
+  /** §4 WIP limits per workflow column (null clears them). */
+  columnLimits?: Record<string, number> | null;
 }
 
 export const projectApi = {

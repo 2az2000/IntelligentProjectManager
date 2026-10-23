@@ -43,15 +43,17 @@ enum ProjectRole {
 }
 
 model User {
-  id           Int     @id @default(autoincrement())
-  email        String  @unique
+  id           Int       @id @default(autoincrement())
+  email        String    @unique
   passwordHash String
   name         String
   avatarUrl    String?
-  locale       String  @default("fa")
+  locale       String    @default("fa")
   theme        String?
   /// Phase 5: daily digest + due-date reminder emails (nodemailer in dev logs to console).
-  notifyEmail  Boolean @default(true)
+  notifyEmail  Boolean   @default(true)
+  /// §4 onboarding: when the first-run tour was finished or skipped (null = never shown).
+  onboardedAt  DateTime?
 
   memberships         ProjectMember[]
   refreshTokens       RefreshToken[]
@@ -67,6 +69,7 @@ model User {
   notifications       Notification[]       @relation("NotificationOwner")
   actedNotifications  Notification[]       @relation("NotificationActor")
   commentReactions    CommentReaction[]
+  savedViews          SavedView[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -122,13 +125,36 @@ model Project {
   hourlyRate   Decimal?        @db.Decimal(14, 2)
   /// §6: total approved budget in currency units — progress bar vs booked cost.
   budgetAmount Decimal?        @db.Decimal(14, 2)
+  /// §4 WIP limits per board column, e.g. {"IN_PROGRESS": 5}; null = unlimited.
+  columnLimits Json?
 
   archivedAt DateTime?
   deletedAt  DateTime?
   createdAt  DateTime  @default(now())
   updatedAt  DateTime  @updatedAt
 
+  savedViews SavedView[]
+
   @@index([ownerId])
+}
+
+/// §4 saved views: a named filter set one user keeps for one project.
+model SavedView {
+  id        Int    @id @default(autoincrement())
+  userId    Int
+  projectId Int
+  name      String
+  /// Serialized board filters (search/priority/assigneeId/groupBy); validated by the API.
+  filters   Json
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, projectId, name])
+  @@index([projectId])
 }
 
 model ProjectMember {
@@ -180,23 +206,28 @@ model ProjectStatus {
 }
 
 model Task {
-  id            Int          @id @default(autoincrement())
-  title         String
-  description   String?
+  id              Int                          @id @default(autoincrement())
+  title           String
+  description     String?
+  /// §4 rich text body (sanitized server-side); `description` keeps the plain-text twin.
+  descriptionHtml String?
   /// Analytics bucket of `statusKey` (kept in sync by the service): TODO | IN_PROGRESS | REVIEW | DONE.
-  status        TaskStatus   @default(TODO)
+  status          TaskStatus                   @default(TODO)
   /// The project's workflow column this task sits in (a ProjectStatus.key of the same project).
-  statusKey     String       @default("TODO")
-  priority      TaskPriority @default(MEDIUM)
+  statusKey       String                       @default("TODO")
+  priority        TaskPriority                 @default(MEDIUM)
   /// Ordering inside a status column (fractional indexing — see modules/tasks/domain/position.ts).
-  position      Float        @default(0)
-  tags          String[]     @default([])
-  startDate     DateTime?
-  dueDate       DateTime?
-  completedAt   DateTime?
-  points        Int?
+  position        Float                        @default(0)
+  tags            String[]                     @default([])
+  startDate       DateTime?
+  dueDate         DateTime?
+  completedAt     DateTime?
+  points          Int?
   /// Effort estimate in working hours — drives CPM durations (see modules/scheduling).
-  estimateHours Float?
+  estimateHours   Float?
+  /// pgvector embedding of title+description (§AI semantic search). Written/read through raw SQL
+  /// in modules/search; Prisma cannot type `vector`, hence `Unsupported`.
+  embedding       Unsupported("vector(1536)")?
 
   parentId Int?
   parent   Task?  @relation("SubTasks", fields: [parentId], references: [id], onDelete: Cascade)
@@ -213,8 +244,8 @@ model Task {
   authorId Int
   author   User @relation("TaskAuthor", fields: [authorId], references: [id], onDelete: Restrict)
 
-  assigneeId Int?
-  assignee   User? @relation("TaskAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+  assigneeId    Int?
+  assignee      User?              @relation("TaskAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
   /// Co-assignees: everyone who shares the task besides the lead above.
   collaborators TaskCollaborator[]
 
@@ -265,14 +296,14 @@ enum DependencyType {
 /// a label adds the presentation the user asked for — a colour and an icon — plus one place to
 /// manage the names a project actually uses. Task tags match labels by exact name.
 model Label {
-  id        Int      @id @default(autoincrement())
+  id        Int     @id @default(autoincrement())
   name      String
   /// `#rrggbb` — validated by the API so the UI can render it directly.
   color     String
   /// Key from the shared icon set (client/src/features/labels/lib/label-icons.ts).
   icon      String
   projectId Int
-  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -358,7 +389,7 @@ model ActivityLog {
 model Notification {
   id        Int       @id @default(autoincrement())
   userId    Int
-  /// ASSIGNED | COMMENTED | MENTIONED | DUE_REMINDER | DAILY_DIGEST
+  /// ASSIGNED | COMMENTED | MENTIONED | DUE_REMINDER | DAILY_DIGEST | WEEKLY_SUMMARY
   type      String
   actorId   Int?
   taskId    Int?

@@ -2,7 +2,8 @@ name: management-system
 
 services:
   postgres:
-    image: postgres:16
+    # §AI semantic search: the pgvector build of Postgres 16 (same data directory as postgres:16).
+    image: pgvector/pgvector:pg16
     container_name: pm-postgres
     restart: unless-stopped
     environment:
@@ -19,7 +20,7 @@ services:
       timeout: 3s
       retries: 10
 
-  # Phase 5: BullMQ (due reminders, daily digest). Socket.IO stays in-process.
+  # Phase 5: BullMQ (due reminders, daily digest, weekly project summaries). Socket.IO stays in-process.
   redis:
     image: redis:7-alpine
     container_name: pm-redis

@@ -37,3 +37,33 @@ export interface BurndownResult {
   total: number;
   points: BurndownPoint[];
 }
+
+/** §3 deadline planner — the inverse of CPM at a chosen Monte Carlo confidence. */
+export type PlanConfidence = 50 | 85 | 95;
+
+export interface DeadlinePlanTask {
+  taskId: number;
+  title: string;
+  status: string;
+  estimateHours: number | null;
+  latestStart: string | null;
+  latestFinish: string | null;
+  slackHours: number | null;
+  isCritical: boolean;
+  mustStartNow: boolean;
+}
+
+export interface DeadlinePlan {
+  deadline: string;
+  anchor: string;
+  confidence: PlanConfidence;
+  feasible: boolean;
+  availableHours: number;
+  requiredHours: number;
+  projectDurationHours: number;
+  bufferHours: number;
+  bufferWorkingDays: number;
+  tasks: DeadlinePlanTask[];
+  mustStartNow: number[];
+  unestimatedTaskIds: number[];
+}

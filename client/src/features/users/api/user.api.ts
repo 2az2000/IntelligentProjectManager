@@ -14,6 +14,8 @@ export interface ProfileInput {
   locale?: 'fa' | 'en';
   theme?: 'light' | 'dark' | 'system' | null;
   notifyEmail?: boolean;
+  /** §4 onboarding stamp — set once the first-run tour is finished or skipped. */
+  onboardedAt?: string | null;
 }
 
 export const userApi = {

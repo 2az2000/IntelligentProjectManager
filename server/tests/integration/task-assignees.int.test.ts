@@ -160,7 +160,7 @@ describe('multiple assignees: lead + co-assignees', () => {
     await agent.patch(`/tasks/${task.body.id}`).send({ assigneeIds: [reza.id, sara.id] });
 
     const activity = await agent.get(`/tasks/${task.body.id}/activity`);
-    const rows = activity.body.filter((r: { field: string | null }) => r.field === 'assignees');
+    const rows = activity.body.items.filter((r: { field: string | null }) => r.field === 'assignees');
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({
       oldValue: String(sara.id),

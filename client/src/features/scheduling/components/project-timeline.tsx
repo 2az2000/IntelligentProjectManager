@@ -18,6 +18,7 @@ import { useProject, useProjectMembers, useTeamWorkload } from '@/features/proje
 import { hasRole } from '@/features/projects/types';
 import { useProjectSocket } from '@/features/realtime';
 import { useApplySchedule, useDependencies, useSchedule } from '../hooks/use-schedule';
+import { DeadlinePlanner } from './deadline-planner';
 import {
   buildDependencyArrows,
   buildTimelineLayout,
@@ -112,6 +113,8 @@ export function ProjectTimeline({ projectId }: { projectId: number }) {
       )}
 
       <OverloadStrip projectId={projectId} />
+
+      <DeadlinePlanner projectId={projectId} defaultDeadline={project?.endDate ?? null} />
 
       <div className="overflow-x-auto rounded-xl border">
         <div className="min-w-[560px]">
@@ -230,8 +233,7 @@ function OverloadStrip({ projectId }: { projectId: number }) {
   const { data: members = [] } = useProjectMembers(projectId);
   const { data: workload } = useTeamWorkload();
 
-  // The heat query spans the user's whole team; narrow it to the current project's members.
-  const memberIds = new Set(members.map((m) => m.user.id));
+  // The heat query spans the user's whole team; this strip only shows this project's members.
   const byUser = new Map((workload?.members ?? []).map((m) => [m.user.id, m]));
   const rows = members.map((m) => {
     const entry = byUser.get(m.user.id);

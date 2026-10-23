@@ -19,6 +19,22 @@ export interface UserSummary {
   avatarUrl: string | null;
 }
 
+/**
+ * A manual date that contradicts a dependency (`PATCH /tasks/:id` only).
+ *
+ * Advisory: the write lands, the user sees why the plan looks impossible.
+ */
+export interface TaskDateConflict {
+  code: 'DEPENDENCY_DATE_CONFLICT';
+  /** `predecessor`: this task starts before an upstream task finishes.
+   *  `successor`: this task ends after a downstream task starts. */
+  direction: 'predecessor' | 'successor';
+  relatedTaskId: number;
+  relatedTaskTitle: string;
+  /** Whole days of overlap; always ≥ 1. */
+  conflictDays: number;
+}
+
 export interface Task {
   id: number;
   projectId: number;
@@ -26,6 +42,8 @@ export interface Task {
   parentId: number | null;
   title: string;
   description: string | null;
+  /** §4 sanitized rich text body; `description` is its plain-text twin. */
+  descriptionHtml: string | null;
   status: TaskStatus;
   /** The project's workflow column this task sits in (`ProjectStatus.key`). */
   statusKey: string;
@@ -48,6 +66,8 @@ export interface Task {
   commentCount: number;
   createdAt: string;
   updatedAt: string;
+  /** Only on a PATCH response: date edits that clash with the dependency chain. */
+  warnings?: TaskDateConflict[];
 }
 
 export interface TaskDetail extends Task {

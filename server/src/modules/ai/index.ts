@@ -8,4 +8,4 @@ export function createAiModule(deps: { db: Db; projects: ProjectAccess }) {
 }
 
 export type { AiService } from './ai.service';
-export { enrichTaskBody, projectIdParams } from './ai.schemas';
+export { breakdownBody, chatBody, enrichTaskBody, projectIdParams } from './ai.schemas';

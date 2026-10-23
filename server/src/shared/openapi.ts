@@ -13,7 +13,7 @@ import {
   updateProjectBody,
 } from '../modules/projects';
 import { createTaskBody, listTasksQuery, moveTaskBody, updateTaskBody } from '../modules/tasks';
-import { enrichTaskBody } from '../modules/ai';
+import { breakdownBody, enrichTaskBody } from '../modules/ai';
 import { changePasswordBody, forgotPasswordBody, resetPasswordBody } from '../modules/auth';
 
 /**
@@ -60,6 +60,8 @@ const UserSchema = z
     locale: z.string().optional(),
     theme: z.string().nullable().optional(),
     notifyEmail: z.boolean().optional(),
+    /** §4 first-run tour stamp (null until finished or skipped). */
+    onboardedAt: z.string().nullable().optional(),
   })
   .openapi('User');
 
@@ -83,6 +85,8 @@ const ProjectSchema = z
     endDate: z.string().nullable().optional(),
     ownerId: Id,
     myRole: Role.optional(),
+    /** §4 WIP limits per board column (`{ IN_PROGRESS: 5 }`); null/absent = unlimited. */
+    columnLimits: z.record(z.string(), z.number()).nullable().optional(),
     stats: z.record(z.string(), z.unknown()).optional(),
   })
   .openapi('Project');
@@ -103,6 +107,8 @@ const TaskSchema = z
     parentId: Id.nullable().optional(),
     title: z.string(),
     description: z.string().nullable().optional(),
+    /** §4 sanitized rich text body; `description` is its plain-text twin. */
+    descriptionHtml: z.string().nullable().optional(),
     /** Analytics bucket of `statusKey`. */
     status: Status,
     /** Workflow column the task sits in (`ProjectStatus.key` of the same project). */
@@ -170,10 +176,20 @@ const ActivityEntrySchema = z
   })
   .openapi('ActivityEntry');
 
+/** One cursor page of the audit trail; totals cover the whole task history. */
+const ActivityPageSchema = z
+  .object({
+    items: z.array(ActivityEntrySchema),
+    nextCursor: Id.nullable(),
+    total: z.number().int(),
+    people: z.number().int(),
+  })
+  .openapi('ActivityPage');
+
 const NotificationSchema = z
   .object({
     id: Id,
-    type: z.enum(['ASSIGNED', 'MENTIONED', 'COMMENTED', 'DUE_REMINDER', 'DAILY_DIGEST']),
+    type: z.enum(['ASSIGNED', 'MENTIONED', 'COMMENTED', 'DUE_REMINDER', 'DAILY_DIGEST', 'WEEKLY_SUMMARY']),
     actorId: Id.nullable().optional(),
     taskId: Id.nullable().optional(),
     projectId: Id.nullable().optional(),
@@ -205,6 +221,99 @@ const AiEnrichmentSchema = z
 const AiProjectDocSchema = z
   .object({ markdown: z.string(), model: z.string() })
   .openapi('AiProjectDoc');
+
+const AiBreakdownTaskSchema = z
+  .object({
+    title: z.string(),
+    description: z.string(),
+    priority: Priority,
+    estimateHours: z.number().nullable(),
+    tags: z.array(z.string()),
+    /** Indexes into the same array (always < the task's own index). */
+    dependsOn: z.array(z.number().int()),
+    assigneeId: Id.nullable(),
+  })
+  .openapi('AiBreakdownTask');
+
+const AiBreakdownSchema = z
+  .object({ tasks: z.array(AiBreakdownTaskSchema), model: z.string() })
+  .openapi('AiBreakdown');
+
+const AiChatSchema = z
+  .object({ answer: z.string(), model: z.string() })
+  .openapi('AiChat');
+
+const AiWeeklySummarySchema = z
+  .object({
+    markdown: z.string(),
+    model: z.string(),
+    range: z.object({ from: z.string(), to: z.string() }),
+    stats: z.object({
+      completed: z.number().int(),
+      created: z.number().int(),
+      open: z.number().int(),
+      overdue: z.number().int(),
+      blocked: z.number().int(),
+      activity: z.number().int(),
+      activeMembers: z.number().int(),
+    }),
+  })
+  .openapi('AiWeeklySummary');
+
+const DeadlinePlanSchema = z
+  .object({
+    deadline: z.string(),
+    anchor: z.string(),
+    confidence: z.union([z.literal(50), z.literal(85), z.literal(95)]),
+    feasible: z.boolean(),
+    availableHours: z.number(),
+    requiredHours: z.number(),
+    projectDurationHours: z.number(),
+    bufferHours: z.number(),
+    bufferWorkingDays: z.number(),
+    mustStartNow: z.array(Id),
+    unestimatedTaskIds: z.array(Id),
+    tasks: z.array(
+      z.object({
+        taskId: Id,
+        title: z.string(),
+        status: z.string(),
+        estimateHours: z.number().nullable(),
+        latestStart: z.string().nullable(),
+        latestFinish: z.string().nullable(),
+        slackHours: z.number().nullable(),
+        isCritical: z.boolean(),
+        mustStartNow: z.boolean(),
+      }),
+    ),
+  })
+  .openapi('DeadlinePlan');
+
+const SearchResultsSchema = z
+  .object({
+    tasks: z.array(
+      z.object({
+        id: Id,
+        projectId: Id,
+        projectTitle: z.string(),
+        title: z.string(),
+        status: z.string(),
+        match: z.enum(['keyword', 'semantic']),
+        similarity: z.number().optional(),
+      }),
+    ),
+    projects: z.array(z.object({ id: Id, title: z.string() })),
+    comments: z.array(
+      z.object({ id: Id, taskId: Id, projectId: Id, taskTitle: z.string(), snippet: z.string() }),
+    ),
+    semantic: z.object({
+      requested: z.boolean(),
+      available: z.boolean(),
+      used: z.boolean(),
+      reason: z.enum(['not_configured', 'provider_error']).optional(),
+    }),
+  })
+  .openapi('SearchResults');
 
 const pathId = (name: string) =>
   z.coerce
@@ -346,6 +455,8 @@ register({
             locale: z.string(),
             theme: z.string().nullable(),
             notifyEmail: z.boolean(),
+            /** §4 onboarding stamp (ISO date, or null to replay the tour). */
+            onboardedAt: z.string().datetime().nullable(),
           })
           .partial(),
       ),
@@ -804,11 +915,17 @@ register({
 register({
   method: 'get',
   path: '/tasks/{taskId}/activity',
-  summary: 'Audit trail of a task (newest first)',
+  summary: 'Audit trail of a task, paginated newest first (default page size 8)',
   tags: ['Activity'],
   security: auth,
-  request: { params: taskParams },
-  responses: { 200: ok(z.array(ActivityEntrySchema)), 404: error },
+  request: {
+    params: taskParams,
+    query: z.object({
+      limit: z.coerce.number().int().min(1).max(50).optional(),
+      cursor: z.coerce.number().int().positive().optional(),
+    }),
+  },
+  responses: { 200: ok(ActivityPageSchema), 400: error, 404: error },
 });
 
 // ---- notifications (phase 5) ----------------------------------------------
@@ -910,6 +1027,22 @@ register({
   responses: { 200: ok(TeamWorkloadSchema), 401: error },
 });
 
+register({
+  method: 'get',
+  path: '/projects/{projectId}/plan',
+  summary: 'Deadline planner: latest start for every task at P50/P85/P95, and what must start now',
+  tags: ['Scheduling'],
+  security: auth,
+  request: {
+    params: z.object({ projectId: pathId('projectId') }),
+    query: z.object({
+      by: z.coerce.date().optional(),
+      confidence: z.coerce.number().optional(),
+    }),
+  },
+  responses: { 200: ok(DeadlinePlanSchema), 400: error, 403: error, 404: error },
+});
+
 // ---- AI (phase 7) ---------------------------------------------------------
 
 register({
@@ -950,6 +1083,94 @@ register({
     502: error,
     503: error,
     504: error,
+  },
+});
+
+register({
+  method: 'post',
+  path: '/projects/{projectId}/ai/breakdown',
+  summary: 'AI: turn a PRD/brief into a previewed task list with estimates and dependencies — writes nothing',
+  tags: ['AI'],
+  security: auth,
+  request: {
+    params: z.object({ projectId: pathId('projectId') }),
+    body: { content: json(breakdownBody), required: true },
+  },
+  responses: { 200: ok(AiBreakdownSchema), 400: error, 403: error, 404: error, 429: error, 502: error, 503: error, 504: error },
+});
+
+register({
+  method: 'post',
+  path: '/projects/{projectId}/ai/chat',
+  summary: 'AI: read-only chat about the project, scoped by the asking user’s role (VIEWER+)',
+  tags: ['AI'],
+  security: auth,
+  request: {
+    params: z.object({ projectId: pathId('projectId') }),
+    body: {
+      content: json(
+        z.object({
+          messages: z.array(z.object({ role: z.enum(['user', 'assistant']), content: z.string() })),
+        }),
+      ),
+      required: true,
+    },
+  },
+  responses: { 200: ok(AiChatSchema), 400: error, 403: error, 404: error, 429: error, 502: error, 503: error, 504: error },
+});
+
+register({
+  method: 'post',
+  path: '/projects/{projectId}/ai/weekly-summary',
+  summary: 'AI: weekly project report from the last 7 days of activity (VIEWER+); the Monday job mails the same report',
+  tags: ['AI'],
+  security: auth,
+  request: { params: z.object({ projectId: pathId('projectId') }) },
+  responses: { 200: ok(AiWeeklySummarySchema), 403: error, 404: error, 429: error, 502: error, 503: error, 504: error },
+});
+
+register({
+  method: 'post',
+  path: '/projects/{projectId}/ai/embeddings/backfill',
+  summary: 'Embed up to 200 existing tasks for semantic search (MEMBER+)',
+  tags: ['AI'],
+  security: auth,
+  request: { params: z.object({ projectId: pathId('projectId') }) },
+  responses: {
+    200: ok(z.object({ embedded: z.number().int(), failed: z.number().int(), total: z.number().int() })),
+    403: error,
+    404: error,
+    429: error,
+    503: error,
+  },
+});
+
+// ---- search (lexical + pgvector) -------------------------------------------
+
+register({
+  method: 'get',
+  path: '/search',
+  summary: 'Global search across the caller’s projects (ILIKE + optional pgvector semantic pass)',
+  tags: ['Search'],
+  security: auth,
+  request: {
+    query: z.object({
+      q: z.string().min(2).max(120),
+      semantic: z.enum(['true', 'false']).optional(),
+    }),
+  },
+  responses: { 200: ok(SearchResultsSchema), 401: error },
+});
+
+register({
+  method: 'get',
+  path: '/search/status',
+  summary: 'Whether semantic search can run (an embedding provider is configured)',
+  tags: ['Search'],
+  security: auth,
+  responses: {
+    200: ok(z.object({ semantic: z.object({ available: z.boolean(), model: z.string() }) })),
+    401: error,
   },
 });
 
@@ -1018,6 +1239,78 @@ register({
   security: auth,
   request: { params: z.object({ projectId: pathId('projectId'), labelId: pathId('labelId') }) },
   responses: { 204: { description: 'Removed' }, 403: error, 404: error },
+});
+
+// ---- saved views (§4) -------------------------------------------------------
+
+const SavedViewFiltersSchema = z
+  .object({
+    search: z.string().optional(),
+    priority: Priority.optional(),
+    /** `0` means "unassigned", as in the board filters. */
+    assigneeId: z.number().int().min(0).optional(),
+    groupBy: z.enum(['none', 'assignee', 'priority', 'status']).optional(),
+  })
+  .openapi('SavedViewFilters');
+
+const SavedViewSchema = z
+  .object({
+    id: Id,
+    projectId: Id,
+    name: z.string(),
+    filters: SavedViewFiltersSchema,
+    createdAt: z.string(),
+    updatedAt: z.string(),
+  })
+  .openapi('SavedView');
+
+const savedViewParams = z.object({ projectId: pathId('projectId'), viewId: pathId('viewId') });
+const savedViewBody = z.object({ name: z.string().min(1).max(40), filters: SavedViewFiltersSchema });
+
+register({
+  method: 'get',
+  path: '/projects/{projectId}/views',
+  summary: 'My saved views of this project (VIEWER+)',
+  tags: ['Tasks'],
+  security: auth,
+  request: { params: z.object({ projectId: pathId('projectId') }) },
+  responses: { 200: ok(z.array(SavedViewSchema)), 401: error, 404: error },
+});
+
+register({
+  method: 'post',
+  path: '/projects/{projectId}/views',
+  summary: 'Save the current filters as a named view (VIEWER+; unique name per user)',
+  tags: ['Tasks'],
+  security: auth,
+  request: {
+    params: z.object({ projectId: pathId('projectId') }),
+    body: { content: json(savedViewBody), required: true },
+  },
+  responses: { 201: ok(SavedViewSchema), 400: error, 401: error, 404: error, 409: error },
+});
+
+register({
+  method: 'patch',
+  path: '/projects/{projectId}/views/{viewId}',
+  summary: 'Rename a view or replace its filters (owner only)',
+  tags: ['Tasks'],
+  security: auth,
+  request: {
+    params: savedViewParams,
+    body: { content: json(savedViewBody.partial()), required: true },
+  },
+  responses: { 200: ok(SavedViewSchema), 400: error, 401: error, 404: error, 409: error },
+});
+
+register({
+  method: 'delete',
+  path: '/projects/{projectId}/views/{viewId}',
+  summary: 'Delete a saved view (owner only)',
+  tags: ['Tasks'],
+  security: auth,
+  request: { params: savedViewParams },
+  responses: { 204: { description: 'Deleted' }, 401: error, 404: error },
 });
 
 // ---- statuses (per-project workflow columns) -------------------------------
@@ -1151,6 +1444,7 @@ export const openapiDocument = generator.generateDocument({
     'Notifications',
     'Dashboard',
     'AI',
+    'Search',
     'Labels',
     'Statuses',
   ].map((name) => ({ name })),

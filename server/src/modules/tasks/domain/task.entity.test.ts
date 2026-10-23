@@ -9,6 +9,7 @@ const base: TaskProps = {
   parentId: null,
   title: 'Task',
   description: null,
+  descriptionHtml: null,
   status: 'TODO',
   statusKey: 'TODO',
   priority: 'MEDIUM',

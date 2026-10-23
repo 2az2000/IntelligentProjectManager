@@ -2,8 +2,10 @@ import { ForbiddenError, NotFoundError, ValidationError } from '../../../shared/
 import { logger } from '../../../shared/logger';
 import type { TaskFieldChange } from '../../../shared/realtime/bus';
 import { hasRole, type ProjectRole } from '../../projects';
+import type { TaskDateConflict } from '../../scheduling';
 import type { StatusCategory, StatusView } from '../../statuses';
 import { POSITION_STEP, positionBetween } from '../domain/position';
+import { withRichText } from '../domain/rich-text';
 import { Task, type NewTask, type TaskChanges, type TaskStatus } from '../domain/task.entity';
 import type {
   AssignedTaskFilters,
@@ -65,6 +67,14 @@ export interface TaskChangedHook {
   }): void | Promise<void>;
 }
 
+/** Wired by the composition root to the scheduling module (dependency-date conflicts). */
+export interface TaskDateWarningsHook {
+  (event: { projectId: number; taskId: number }): Promise<TaskDateConflict[]>;
+}
+
+/** A task edit plus the advisory warnings the client should surface (never blocking). */
+export type TaskUpdateResult = TaskView & { warnings?: TaskDateConflict[] };
+
 /**
  * Fields tracked in the activity log / realtime payload.
  *
@@ -95,7 +105,10 @@ const formatValue = (value: unknown): string | null => {
 
 export class TaskService {
   /** Wired in the composition root (activity log, realtime broadcast, reminder jobs). */
-  readonly hooks: { onChanged: TaskChangedHook | null } = { onChanged: null };
+  readonly hooks: { onChanged: TaskChangedHook | null; dateWarnings: TaskDateWarningsHook | null } = {
+    onChanged: null,
+    dateWarnings: null,
+  };
 
   constructor(
     private readonly tasks: TaskRepository,
@@ -122,6 +135,7 @@ export class TaskService {
     if (parentId !== null) await this.assertValidParent(parentId, input.projectId);
 
     const { assigneeIds, assigneeId, ...fields } = input;
+    const rich = withRichText(fields);
     const assignees = await this.assertAssignees(
       input.projectId,
       assigneeIds ?? (assigneeId != null ? [assigneeId] : []),
@@ -133,7 +147,7 @@ export class TaskService {
     let created = await this.tasks.create(
       Task.validateNew(
         {
-          ...fields,
+          ...rich,
           assigneeId: assignees[0],
           statusKey: column.key,
           status: column.category,
@@ -155,11 +169,12 @@ export class TaskService {
     return created;
   }
 
-  async update(userId: number, taskId: number, input: UpdateTaskInput): Promise<TaskView> {
+  async update(userId: number, taskId: number, input: UpdateTaskInput): Promise<TaskUpdateResult> {
     const task = await this.load(taskId);
     await this.access.assertRole(task.projectId, userId, 'MEMBER');
 
-    const { assigneeIds, ...fields } = input;
+    const { assigneeIds, ...rest } = input;
+    const fields = withRichText(rest);
     const ownershipEdited = assigneeIds !== undefined || fields.assigneeId !== undefined;
     const previousAssignees = ownershipEdited ? await this.tasks.assigneeSet(taskId) : [];
     const nextAssignees = !ownershipEdited
@@ -214,7 +229,22 @@ export class TaskService {
       changes: diff,
       ...(added.length > 0 && { notifyUserIds: added }),
     });
-    return updated;
+
+    // §Productivity: a manual date edit may contradict a dependency. The write already landed —
+    // the warning travels with the response instead of failing the request.
+    const dateEdited = resolved.startDate !== undefined || resolved.dueDate !== undefined;
+    let warnings: TaskDateConflict[] | undefined;
+    if (dateEdited) {
+      try {
+        warnings = await this.hooks.dateWarnings?.({
+          projectId: updated.projectId,
+          taskId: updated.id,
+        });
+      } catch (err) {
+        logger.warn({ err, taskId: updated.id }, 'Date-conflict check failed');
+      }
+    }
+    return warnings && warnings.length > 0 ? { ...updated, warnings } : updated;
   }
 
   /** Moves a task to a column and between two neighbours (drag & drop). */

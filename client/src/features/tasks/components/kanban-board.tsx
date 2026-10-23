@@ -22,10 +22,19 @@ import {
 import { sortableKeyboardCoordinates } from '@dnd-kit/sortable';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
+import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { useProjectLabels } from '@/features/labels';
 import { sortStatuses, type ProjectStatus } from '@/features/statuses';
 import { useMoveTask } from '../hooks/use-tasks';
-import { byPosition, planDrop, planDropAtIndex } from '../lib/ordering';
+import { byPosition, planDrop, planDropAtIndex, type DropPlan } from '../lib/ordering';
 import type { Task } from '../types';
 import { KanbanColumn } from './kanban-column';
 import { TaskCardView } from './task-card';
@@ -65,6 +74,7 @@ export function KanbanBoard({
   allTasks,
   readOnly,
   onOpen,
+  columnLimits,
 }: {
   projectId: number;
   /** The project's workflow columns, in board order — they *are* the board. */
@@ -75,12 +85,16 @@ export function KanbanBoard({
   allTasks: Task[];
   readOnly: boolean;
   onOpen: (taskId: number) => void;
+  /** §4 WIP limits per column (`{ IN_PROGRESS: 5 }`); a full column asks before accepting a card. */
+  columnLimits?: Record<string, number> | null;
 }) {
   const t = useTranslations('Tasks');
   const ts = useTranslations('Tasks.status');
   const { data: labels } = useProjectLabels(projectId);
   const [activeId, setActiveId] = useState<number | null>(null);
   const [preview, setPreview] = useState<Preview | null>(null);
+  // A drop that would push a limited column over its WIP limit waits here for confirmation.
+  const [pending, setPending] = useState<{ taskId: number; plan: DropPlan; column: string; limit: number } | null>(null);
   const moveTask = useMoveTask(projectId);
 
   const columns = useMemo(() => sortStatuses(statuses), [statuses]);
@@ -217,6 +231,35 @@ export function KanbanBoard({
     );
   };
 
+  /** Runs a move and offers a one-click undo back to the card's previous slot. */
+  const runMove = (
+    taskId: number,
+    plan: DropPlan,
+    previous?: { statusKey: string; index: number },
+  ) => {
+    moveTask.mutate(
+      { taskId, plan },
+      {
+        onError: () => toast.error(t('moveFailed')),
+        onSuccess: () => {
+          if (!previous) return;
+          const undo = planDropAtIndex(allTasks, taskId, previous.statusKey, previous.index);
+          if (!undo) return;
+          toast.success(t('moved'), {
+            action: {
+              label: t('undo'),
+              onClick: () =>
+                moveTask.mutate(
+                  { taskId, plan: undo },
+                  { onError: () => toast.error(t('moveFailed')) },
+                ),
+            },
+          });
+        },
+      },
+    );
+  };
+
   const handleDragEnd = ({ active, over }: DragEndEvent) => {
     // What the user actually saw is the source of truth: the pointer sits on the dragged card's own
     // slot at drop time, so the collision often resolves to the column rather than a neighbour.
@@ -236,7 +279,32 @@ export function KanbanBoard({
           ? planDropAtIndex(allTasks, active.id, dropped.statusKey, dropped.index)
           : null;
     if (!plan) return;
-    moveTask.mutate({ taskId: active.id, plan }, { onError: () => toast.error(t('moveFailed')) });
+
+    const previousTask = allTasks.find((task) => task.id === active.id);
+    const previous = previousTask
+      ? {
+          statusKey: previousTask.statusKey,
+          index: allTasks
+            .filter((task) => task.statusKey === previousTask.statusKey)
+            .sort(byPosition)
+            .findIndex((task) => task.id === active.id),
+        }
+      : undefined;
+
+    // §4 WIP limit: crossing into a full column is a conscious choice, never a silent overflow.
+    const limit = columnLimits?.[plan.statusKey];
+    const wouldOverflow =
+      limit !== undefined &&
+      previousTask !== undefined &&
+      previousTask.statusKey !== plan.statusKey &&
+      allTasks.filter((task) => task.statusKey === plan.statusKey && task.id !== active.id).length >=
+        limit;
+    if (wouldOverflow) {
+      setPending({ taskId: active.id, plan, column: labelOf(plan.statusKey), limit: limit! });
+      return;
+    }
+
+    runMove(active.id, plan, previous);
   };
 
   const reset = () => {
@@ -256,7 +324,7 @@ export function KanbanBoard({
       onDragEnd={handleDragEnd}
       onDragCancel={reset}
     >
-      <div className="flex h-full gap-4 overflow-x-auto pb-4">
+      <div className="flex h-full gap-4 overflow-x-auto pb-4" data-tour="board">
         {columns.map((status) => (
           <KanbanColumn
             key={status.key}
@@ -266,9 +334,50 @@ export function KanbanBoard({
             labels={labels}
             readOnly={readOnly}
             onOpen={onOpen}
+            limit={columnLimits?.[status.key]}
           />
         ))}
       </div>
+
+      <Dialog open={pending !== null} onOpenChange={(open) => !open && setPending(null)}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>{t('wipTitle', { column: pending?.column ?? '' })}</DialogTitle>
+            <DialogDescription>
+              {t('wipBody', { limit: pending?.limit ?? 0 })}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button type="button" variant="ghost" onClick={() => setPending(null)}>
+              {t('wipCancel')}
+            </Button>
+            <Button
+              type="button"
+              onClick={() => {
+                if (!pending) return;
+                const { taskId, plan } = pending;
+                const previousTask = allTasks.find((task) => task.id === taskId);
+                setPending(null);
+                runMove(
+                  taskId,
+                  plan,
+                  previousTask
+                    ? {
+                        statusKey: previousTask.statusKey,
+                        index: allTasks
+                          .filter((task) => task.statusKey === previousTask.statusKey)
+                          .sort(byPosition)
+                          .findIndex((task) => task.id === taskId),
+                      }
+                    : undefined,
+                );
+              }}
+            >
+              {t('wipConfirm')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <DragOverlay
         // Settle the card into its slot instead of teleporting it on drop.
         dropAnimation={{ duration: 220, easing: 'cubic-bezier(0.22, 1, 0.36, 1)' }}

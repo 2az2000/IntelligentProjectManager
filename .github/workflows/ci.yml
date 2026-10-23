@@ -16,7 +16,8 @@ jobs:
         working-directory: server
     services:
       postgres:
-        image: postgres:16
+        # pgvector build: the semantic-search migration runs `CREATE EXTENSION vector`.
+        image: pgvector/pgvector:pg16
         env:
           POSTGRES_USER: pm
           POSTGRES_PASSWORD: pm

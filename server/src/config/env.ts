@@ -70,6 +70,13 @@ const envSchema = z.object({
   AI_FALLBACK_API_KEY: z.string().min(1).optional(),
   AI_FALLBACK_BASE_URL: z.url().optional(),
   AI_FALLBACK_MODEL: z.string().optional(),
+  // §AI semantic search: embeddings share the AI provider by default (OpenRouter exposes
+  // POST /embeddings). The column is vector(1536), so models must answer 1536 floats;
+  // text-embedding-3-small is the default for exactly that reason. Without a usable key the
+  // search endpoint stays lexical and says so (`semantic.available: false`).
+  AI_EMBEDDING_MODEL: z.string().default('openai/text-embedding-3-small'),
+  AI_EMBEDDING_API_KEY: z.string().min(1).optional(),
+  AI_EMBEDDING_BASE_URL: z.url().optional(),
   JOBS_ENABLED: z
     .preprocess((value) => (value === undefined || value === '' ? undefined : value === 'true' || value === '1'), z.boolean().default(true)),
 });

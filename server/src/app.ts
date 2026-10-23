@@ -126,10 +126,11 @@ export function createApp(deps: { db: Db } = { db: prisma }) {
   // §7 structured labels: a project's own tag vocabulary (colour + icon), ADMIN-managed.
   const labels = createLabelsModule({ db, projects: projects.service });
   const notifications = createNotificationsModule({ db });
-  // Disabled in tests (and wherever REDIS_URL is unreachable).
-  const jobs = createJobsModule({ db });
   // Phase 7: AI previews (task enrichment + project docs) — 503 without AI_API_KEY.
   const ai = createAiModule({ db, projects: projects.service });
+  // Disabled in tests (and wherever REDIS_URL is unreachable). The weekly summary job needs the
+  // AI service, which is why it is created first.
+  const jobs = createJobsModule({ db, ai: ai.service });
 
   // Cross-module reaction without a hard dependency from projects to tasks.
   projects.service.hooks.onMemberRemoved = (projectId, userId) =>
@@ -159,7 +160,17 @@ export function createApp(deps: { db: Db } = { db: prisma }) {
     if (event.kind === 'created' || event.kind === 'updated') {
       void jobs.scheduleDueReminder(event.taskId);
     }
+    // §AI semantic search: refresh the embedding only when the searchable text changed. This is
+    // fire-and-forget: an embedding failure must never fail the write that triggered it.
+    const textChanged =
+      event.kind === 'created' ||
+      Boolean(event.changes?.some((c) => c.field === 'title' || c.field === 'description'));
+    if (textChanged) void ai.service.embedTask(event.taskId);
   };
+
+  // §Productivity: warn (non-blocking) when a manual date edit contradicts a dependency chain.
+  tasks.service.hooks.dateWarnings = (event) =>
+    scheduling.schedules.findDateWarnings(event.projectId, event.taskId);
 
   comments.service.hooks.onCreated = async (event) => {
     publish('comment:created', {
@@ -205,6 +216,7 @@ export function createApp(deps: { db: Db } = { db: prisma }) {
   app.use('/projects/:projectId/ai', ai.aiRouter);
   app.use('/projects/:projectId/labels', labels.router);
   app.use('/projects/:projectId/statuses', statuses.router);
+  app.use('/projects/:projectId/views', projects.savedViewsRouter);
   app.use('/projects', projects.router);
   app.use('/tasks/:taskId/comments', comments.taskCommentsRouter);
   app.use('/tasks/:taskId/time', tasks.taskTimeRouter);
@@ -213,7 +225,7 @@ export function createApp(deps: { db: Db } = { db: prisma }) {
   app.use('/comments', comments.commentsRouter);
   app.use('/me', tasks.myTimeRouter, tasks.myTasksRouter, projects.teamRouter);
   app.use('/dashboard', dashboard.router);
-  app.use('/search', createSearchRouter());
+  app.use('/search', createSearchRouter({ db, ai: ai.service }));
   app.use('/projects/:projectId/schedule', scheduling.projectScheduleRouter);
   app.use('/projects/:projectId/dependencies', scheduling.dependenciesRouter);
   app.use('/projects/:projectId', scheduling.analyticsRouter);
