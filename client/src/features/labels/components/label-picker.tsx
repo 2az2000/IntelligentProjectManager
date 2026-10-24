@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useRef, useState } from 'react';
+import { MAX_TAGS } from '@managesys/contracts';
 import { Plus } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { Input } from '@/components/ui/input';
@@ -8,8 +9,6 @@ import { FALLBACK_LABEL_ICON, LABEL_ICON_BY_KEY } from '../lib/label-icons';
 import { labelStyle, type Label } from '../types';
 import { useProjectLabels } from '../hooks/use-labels';
 import { LabelChip } from './label-chip';
-
-const MAX_TAGS = 10;
 
 /**
  * The task's label field. Two things at once:

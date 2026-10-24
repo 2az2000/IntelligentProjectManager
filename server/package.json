@@ -3,11 +3,15 @@
   "version": "1.0.0",
   "main": "dist/main.js",
   "scripts": {
+    "predev": "npm run build --prefix ../packages/contracts",
     "dev": "tsx watch --clear-screen=false src/main.ts",
+    "prebuild": "npm run build --prefix ../packages/contracts",
     "build": "tsc -p tsconfig.build.json",
     "start": "node dist/main.js",
     "lint": "eslint .",
+    "pretypecheck": "npm run build --prefix ../packages/contracts",
     "typecheck": "tsc --noEmit",
+    "pretest": "npm run build --prefix ../packages/contracts",
     "test": "vitest run",
     "test:watch": "vitest",
     "format": "prettier --write .",
@@ -15,6 +19,8 @@
     "db:deploy": "prisma migrate deploy",
     "db:seed": "prisma db seed",
     "db:studio": "prisma studio",
+    "preopenapi:dump": "npm run build --prefix ../packages/contracts",
+    "openapi:dump": "tsx scripts/dump-openapi.ts",
     "postinstall": "prisma generate"
   },
   "keywords": [],
@@ -23,6 +29,7 @@
   "description": "",
   "dependencies": {
     "@asteasolutions/zod-to-openapi": "^9.1.0",
+    "@managesys/contracts": "file:../packages/contracts",
     "@prisma/adapter-pg": "^7.2.0",
     "@prisma/client": "^7.10.0",
     "bcryptjs": "^3.0.3",

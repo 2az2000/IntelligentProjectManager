@@ -1,29 +1,8 @@
-import type {
-  MemberView,
-  ProjectStats,
-  ProjectView,
-  TeamWorkloadView,
-  TeammateView,
-  UserSummary,
-} from '../application/project.repository';
-import type { ProjectRole } from '../domain/project-role';
+import type { ProjectDto } from '@managesys/contracts';
+import type { MemberView, ProjectView, TeamWorkloadView, TeammateView } from '../application/project.repository';
 
-export interface ProjectDto {
-  id: number;
-  name: string;
-  description: string | null;
-  startDate: string | null;
-  endDate: string | null;
-  ownerId: number;
-  owner: UserSummary;
-  myRole: ProjectRole;
-  memberCount: number;
-  /** §4 WIP limits per board column (null = unlimited). */
-  columnLimits: Record<string, number> | null;
-  stats: ProjectStats;
-  createdAt: string;
-  updatedAt: string;
-}
+// The response shape is shared with the client (`@managesys/contracts`).
+export type { ProjectDto };
 
 const iso = (d: Date | null) => d?.toISOString() ?? null;
 

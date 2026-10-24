@@ -1,4 +1,8 @@
+import { MAX_DESCRIPTION_HTML } from '@managesys/contracts';
 import DOMPurify from 'isomorphic-dompurify';
+
+/** Shared with the client editor so both sides cap the body at the same size. */
+export { MAX_DESCRIPTION_HTML };
 
 /**
  * §4 rich text descriptions.
@@ -31,8 +35,6 @@ const ALLOWED_TAGS = [
 ];
 
 const ALLOWED_ATTR = ['href', 'target', 'rel', 'type', 'checked', 'disabled'];
-
-export const MAX_DESCRIPTION_HTML = 20_000;
 
 /** Sanitizes editor HTML; empty (or empty paragraph) collapses to null. */
 export function sanitizeDescriptionHtml(input: string | null | undefined): string | null {

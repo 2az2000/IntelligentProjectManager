@@ -1,0 +1,24 @@
+{
+  "name": "@managesys/contracts",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Single source of truth for the HTTP contract shared by server and client (zod payloads + DTO types).",
+  "license": "ISC",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsc -p tsconfig.json --watch --preserveWatchOutput",
+    "typecheck": "tsc --noEmit"
+  },
+  "peerDependencies": {
+    "zod": "^4.0.0"
+  },
+  "devDependencies": {
+    "typescript": "^6.0.3",
+    "zod": "4.2.1"
+  }
+}

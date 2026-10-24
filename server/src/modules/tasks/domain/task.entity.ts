@@ -1,12 +1,15 @@
+import {
+  MAX_TAGS,
+  TASK_PRIORITIES,
+  TASK_STATUSES,
+  type TaskPriority,
+  type TaskStatus,
+} from '@managesys/contracts';
 import { ValidationError } from '../../../shared/errors';
 
-export const TASK_STATUSES = ['TODO', 'IN_PROGRESS', 'REVIEW', 'DONE'] as const;
-export const TASK_PRIORITIES = ['LOW', 'MEDIUM', 'HIGH', 'URGENT'] as const;
-
-export type TaskStatus = (typeof TASK_STATUSES)[number];
-export type TaskPriority = (typeof TASK_PRIORITIES)[number];
-
-export const MAX_TAGS = 10;
+// The vocabulary lives in @managesys/contracts so the client's forms cannot drift from it.
+export { MAX_TAGS, TASK_PRIORITIES, TASK_STATUSES };
+export type { TaskPriority, TaskStatus };
 
 export interface TaskProps {
   id: number;

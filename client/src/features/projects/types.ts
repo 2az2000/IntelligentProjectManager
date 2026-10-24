@@ -1,41 +1,17 @@
-export const PROJECT_ROLES = ['OWNER', 'ADMIN', 'MEMBER', 'VIEWER'] as const;
-export type ProjectRole = (typeof PROJECT_ROLES)[number];
-export const ASSIGNABLE_ROLES = ['ADMIN', 'MEMBER', 'VIEWER'] as const;
-export type AssignableRole = (typeof ASSIGNABLE_ROLES)[number];
+import type { ProjectDto, ProjectRole, UserSummary } from '@managesys/contracts';
 
-const RANK: Record<ProjectRole, number> = { VIEWER: 0, MEMBER: 1, ADMIN: 2, OWNER: 3 };
-/** VIEWER < MEMBER < ADMIN < OWNER */
-export const hasRole = (actual: ProjectRole, required: ProjectRole) => RANK[actual] >= RANK[required];
+/** Roles, their ranking and the response shape all come from `@managesys/contracts`. */
+export {
+  ASSIGNABLE_ROLES,
+  PROJECT_ROLES,
+  hasRole,
+  type AssignableRole,
+  type ProjectRole,
+} from '@managesys/contracts';
+export type { UserSummary } from '@managesys/contracts';
 
-export interface UserSummary {
-  id: number;
-  name: string;
-  avatarUrl: string | null;
-}
-
-/** Mirrors ProjectDto in docs/02-API-CONTRACT.md */
-export interface Project {
-  id: number;
-  name: string;
-  description: string | null;
-  startDate: string | null;
-  endDate: string | null;
-  ownerId: number;
-  owner: UserSummary;
-  myRole: ProjectRole;
-  memberCount: number;
-  /** §4 WIP limits per board column (null = unlimited). */
-  columnLimits: Record<string, number> | null;
-  stats: {
-    total: number;
-    done: number;
-    overdue: number;
-    /** §3 per-parent subtask progress (done/total) for parent cards. */
-    subtaskProgress: { taskId: number; done: number; total: number }[];
-  };
-  createdAt: string;
-  updatedAt: string;
-}
+/** Mirrors ProjectDto in docs/02-API-CONTRACT.md (shared type). */
+export type Project = ProjectDto;
 
 export interface ProjectMember {
   user: UserSummary & { email: string };

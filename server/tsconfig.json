@@ -1,4 +1,5 @@
 {
+  "extends": "../tsconfig.base.json",
   "compilerOptions": {
     "target": "ES2022",
     "module": "nodenext",
@@ -6,13 +7,7 @@
     "lib": ["ES2022"],
     "rootDir": ".",
     "outDir": "./dist",
-    "strict": true,
     "noUncheckedIndexedAccess": true,
-    "noImplicitOverride": true,
-    "esModuleInterop": true,
-    "resolveJsonModule": true,
-    "forceConsistentCasingInFileNames": true,
-    "skipLibCheck": true,
     "sourceMap": true
   },
   "include": ["src/**/*", "prisma/**/*", "tests/**/*", "vitest.config.mts", "prisma.config.ts"],

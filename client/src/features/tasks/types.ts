@@ -1,78 +1,19 @@
-/**
- * Mirrors TaskDto in docs/02-API-CONTRACT.md.
- *
- * These four are the *analytics buckets* (`Task.status`). The board columns a task actually sits
- * in are the project's own `statusKey`s — see features/statuses.
- */
-export const TASK_STATUSES = ['TODO', 'IN_PROGRESS', 'REVIEW', 'DONE'] as const;
-export const TASK_PRIORITIES = ['LOW', 'MEDIUM', 'HIGH', 'URGENT'] as const;
+import { TASK_STATUSES, type TaskDto, type UserSummary } from '@managesys/contracts';
+import type { TaskDetailDto, TaskPriority, TaskStatus } from '@managesys/contracts';
 
-export type TaskStatus = (typeof TASK_STATUSES)[number];
-export type TaskPriority = (typeof TASK_PRIORITIES)[number];
+/**
+ * Task vocabulary and response shapes come from `@managesys/contracts` — the same file the server
+ * validates and serializes with. Analytics buckets (`status`) vs. board columns (`statusKey`):
+ * the latter are the project's own, see features/statuses.
+ */
+export { TASK_PRIORITIES, TASK_STATUSES, type TaskStatus, type TaskPriority } from '@managesys/contracts';
+export type { TaskDateConflict, UserSummary } from '@managesys/contracts';
+
+export type Task = TaskDto;
+export type TaskDetail = TaskDetailDto;
 
 export const isTaskStatus = (value: unknown): value is TaskStatus =>
   TASK_STATUSES.includes(value as TaskStatus);
-
-export interface UserSummary {
-  id: number;
-  name: string;
-  avatarUrl: string | null;
-}
-
-/**
- * A manual date that contradicts a dependency (`PATCH /tasks/:id` only).
- *
- * Advisory: the write lands, the user sees why the plan looks impossible.
- */
-export interface TaskDateConflict {
-  code: 'DEPENDENCY_DATE_CONFLICT';
-  /** `predecessor`: this task starts before an upstream task finishes.
-   *  `successor`: this task ends after a downstream task starts. */
-  direction: 'predecessor' | 'successor';
-  relatedTaskId: number;
-  relatedTaskTitle: string;
-  /** Whole days of overlap; always ≥ 1. */
-  conflictDays: number;
-}
-
-export interface Task {
-  id: number;
-  projectId: number;
-  project: { id: number; name: string };
-  parentId: number | null;
-  title: string;
-  description: string | null;
-  /** §4 sanitized rich text body; `description` is its plain-text twin. */
-  descriptionHtml: string | null;
-  status: TaskStatus;
-  /** The project's workflow column this task sits in (`ProjectStatus.key`). */
-  statusKey: string;
-  priority: TaskPriority;
-  position: number;
-  tags: string[];
-  points: number | null;
-  /** Effort estimate in working hours; null = not estimated (drives CPM scheduling). */
-  estimateHours: number | null;
-  startDate: string | null;
-  dueDate: string | null;
-  completedAt: string | null;
-  author: UserSummary;
-  /** Lead assignee; null when the task has no owner. */
-  assignee: UserSummary | null;
-  /** Lead first, then co-assignees — everyone who shares the task. */
-  assignees: UserSummary[];
-  subtaskCount: number;
-  doneSubtaskCount: number;
-  commentCount: number;
-  createdAt: string;
-  updatedAt: string;
-  /** Only on a PATCH response: date edits that clash with the dependency chain. */
-  warnings?: TaskDateConflict[];
-}
-
-export interface TaskDetail extends Task {
-  subtasks: Task[];
-}
 
 export interface TaskFilters {
   search?: string;

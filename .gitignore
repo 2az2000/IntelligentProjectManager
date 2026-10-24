@@ -1,4 +1,6 @@
 node_modules
+# the shared contract is consumed as compiled output
+/packages/contracts/dist
 .env
 .env.*
 !.env.example

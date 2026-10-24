@@ -1,29 +1,13 @@
-/** Mirrors the activity DTO in server/src/modules/activity/activity.module.ts */
-export const ACTIVITY_ACTIONS = ['created', 'updated', 'moved', 'deleted'] as const;
-export type ActivityAction = (typeof ACTIVITY_ACTIONS)[number];
-
-export interface ActivityActor {
-  id: number;
-  name: string;
-  avatarUrl: string | null;
-}
-
-/** One cursor page (`GET /tasks/:taskId/activity`); totals cover the whole history. */
-export interface ActivityPage {
-  items: ActivityEntry[];
-  /** Pass back as `cursor` to fetch the next (older) page; null on the last page. */
-  nextCursor: number | null;
-  total: number;
-  people: number;
-}
-
-export interface ActivityEntry {
-  id: number;
-  taskId: number;
-  action: ActivityAction;
-  field: string | null;
-  oldValue: string | null;
-  newValue: string | null;
-  actor: ActivityActor;
-  createdAt: string;
-}
+/**
+ * Activity rows are shared with the server (`@managesys/contracts`): one page is at most
+ * `ACTIVITY_PAGE_SIZE` rows and `nextCursor` drives the "load more" button.
+ */
+export {
+  ACTIVITY_ACTIONS,
+  ACTIVITY_MAX_PAGE_SIZE,
+  ACTIVITY_PAGE_SIZE,
+  type ActivityAction,
+  type ActivityActor,
+  type ActivityEntry,
+  type ActivityPage,
+} from '@managesys/contracts';

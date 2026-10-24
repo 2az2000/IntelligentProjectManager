@@ -1,3 +1,4 @@
+import type { CreateProjectRequest, UpdateProjectRequest } from '@managesys/contracts';
 import { apiClient } from '@/lib/api-client';
 import type {
   AssignableRole,
@@ -8,14 +9,9 @@ import type {
   TeamWorkload,
 } from '../types';
 
-export interface ProjectInput {
-  name: string;
-  description?: string | null;
-  startDate?: string | null;
-  endDate?: string | null;
-  /** §4 WIP limits per workflow column (null clears them). */
-  columnLimits?: Record<string, number> | null;
-}
+// Request body from the shared contract; the WIP limits are PATCH-only, hence the pick.
+export type ProjectInput = CreateProjectRequest &
+  Pick<UpdateProjectRequest, 'columnLimits'>;
 
 export const projectApi = {
   list: async (): Promise<Project[]> => (await apiClient.get<Project[]>('/projects')).data,

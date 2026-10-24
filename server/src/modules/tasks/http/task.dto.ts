@@ -1,54 +1,11 @@
-import type { TaskDateConflict } from '../../scheduling';
-import type { TaskDetailView, TaskView, UserSummary } from '../application/task.repository';
-import type { TaskPriority, TaskStatus } from '../domain/task.entity';
+import type { TaskDateConflict, TaskDetailDto, TaskDto } from '@managesys/contracts';
+import type { TaskDetailView, TaskView } from '../application/task.repository';
 
-/** Mirrors TaskDateConflict in modules/scheduling (kept structural so the modules stay decoupled). */
-export interface TaskDateConflictDto {
-  code: 'DEPENDENCY_DATE_CONFLICT';
-  direction: 'predecessor' | 'successor';
-  relatedTaskId: number;
-  relatedTaskTitle: string;
-  conflictDays: number;
-}
-
-export interface TaskDto {
-  id: number;
-  projectId: number;
-  project: { id: number; name: string };
-  parentId: number | null;
-  title: string;
-  description: string | null;
-  /** §4 rich text body (sanitized on write); `description` is its plain-text twin. */
-  descriptionHtml: string | null;
-  /** Analytics bucket of `statusKey` (TODO | IN_PROGRESS | REVIEW | DONE). */
-  status: TaskStatus;
-  /** The project's workflow column the task sits in (`ProjectStatus.key`). */
-  statusKey: string;
-  priority: TaskPriority;
-  position: number;
-  tags: string[];
-  points: number | null;
-  startDate: string | null;
-  dueDate: string | null;
-  estimateHours: number | null;
-  completedAt: string | null;
-  author: UserSummary;
-  /** Lead assignee (`assigneeId`); null when nobody owns the task. */
-  assignee: UserSummary | null;
-  /** Lead first, then co-assignees — everyone who shares the task. */
-  assignees: UserSummary[];
-  subtaskCount: number;
-  doneSubtaskCount: number;
-  commentCount: number;
-  createdAt: string;
-  updatedAt: string;
-  /** Only present on PATCH responses: non-blocking clashes between a manual date and dependencies. */
-  warnings?: TaskDateConflictDto[];
-}
-
-export interface TaskDetailDto extends TaskDto {
-  subtasks: TaskDto[];
-}
+// The response shape is shared with the client (`@managesys/contracts`), so the board and the
+// API cannot disagree about a field.
+export type { TaskDetailDto, TaskDto };
+/** Kept for callers that name the conflict row rather than the shared type. */
+export type TaskDateConflictDto = TaskDateConflict;
 
 const iso = (d: Date | null) => d?.toISOString() ?? null;
 

@@ -76,54 +76,89 @@ const MemberSchema = z
   })
   .openapi('Member');
 
+/**
+ * A user as the API returns them (task author, assignee, project owner), inlined rather than
+ * registered as a component on purpose: a `$ref` next to `nullable` is emitted as `<ref> & unknown`,
+ * which would stop the generated type from being *exactly* the shared `UserSummary` the client
+ * codes against (see client/src/lib/api-contract.ts).
+ */
+const userSummary = () => z.object({ id: Id, name: z.string(), avatarUrl: z.string().nullable() });
+
+const ProjectStatsSchema = z
+  .object({
+    total: z.number().int(),
+    done: z.number().int(),
+    overdue: z.number().int(),
+    /** §3 per-parent subtask progress (done/total) for parent cards. */
+    subtaskProgress: z.array(z.object({ taskId: Id, done: z.number().int(), total: z.number().int() })),
+  })
+  .openapi('ProjectStats');
+
+/** Mirrors ProjectDto in `@managesys/contracts` (the client type-checks both against each other). */
 const ProjectSchema = z
   .object({
     id: Id,
     name: z.string(),
-    description: z.string().nullable().optional(),
-    startDate: z.string().nullable().optional(),
-    endDate: z.string().nullable().optional(),
+    description: z.string().nullable(),
+    startDate: z.string().nullable(),
+    endDate: z.string().nullable(),
     ownerId: Id,
-    myRole: Role.optional(),
-    /** §4 WIP limits per board column (`{ IN_PROGRESS: 5 }`); null/absent = unlimited. */
-    columnLimits: z.record(z.string(), z.number()).nullable().optional(),
-    stats: z.record(z.string(), z.unknown()).optional(),
+    owner: userSummary(),
+    myRole: Role,
+    memberCount: z.number().int(),
+    /** §4 WIP limits per board column (`{ IN_PROGRESS: 5 }`); null = unlimited. */
+    columnLimits: z.record(z.string(), z.number()).nullable(),
+    stats: ProjectStatsSchema,
+    createdAt: z.string(),
+    updatedAt: z.string(),
   })
   .openapi('Project');
 
-/** A task's assignee as the API returns it: `assignees[0]` is the lead. */
-const AssigneeSchema = z
+const TaskDateConflictSchema = z
   .object({
-    id: Id,
-    name: z.string(),
-    avatarUrl: z.string().nullable().optional(),
+    code: z.literal('DEPENDENCY_DATE_CONFLICT'),
+    direction: z.enum(['predecessor', 'successor']),
+    relatedTaskId: Id,
+    relatedTaskTitle: z.string(),
+    conflictDays: z.number().int(),
   })
-  .openapi('Assignee');
+  .openapi('TaskDateConflict');
 
+/** Mirrors TaskDto in `@managesys/contracts` (the client type-checks both against each other). */
 const TaskSchema = z
   .object({
     id: Id,
     projectId: Id,
-    parentId: Id.nullable().optional(),
+    project: z.object({ id: Id, name: z.string() }),
+    parentId: Id.nullable(),
     title: z.string(),
-    description: z.string().nullable().optional(),
+    description: z.string().nullable(),
     /** §4 sanitized rich text body; `description` is its plain-text twin. */
-    descriptionHtml: z.string().nullable().optional(),
+    descriptionHtml: z.string().nullable(),
     /** Analytics bucket of `statusKey`. */
     status: Status,
     /** Workflow column the task sits in (`ProjectStatus.key` of the same project). */
     statusKey: z.string(),
     priority: Priority,
-    points: z.number().nullable().optional(),
-    startDate: z.string().nullable().optional(),
-    dueDate: z.string().nullable().optional(),
-    estimateHours: z.number().nullable().optional(),
+    position: z.number(),
+    tags: z.array(z.string()),
+    points: z.number().nullable(),
+    startDate: z.string().nullable(),
+    dueDate: z.string().nullable(),
+    estimateHours: z.number().nullable(),
+    completedAt: z.string().nullable(),
+    author: userSummary(),
     /** Lead assignee; null when nobody owns the task. */
-    assigneeId: Id.nullable().optional(),
+    assignee: userSummary().nullable(),
     /** Whole assignee set: lead first, then co-assignees (`assigneeIds` on writes). */
-    assignees: z.array(AssigneeSchema).optional(),
-    tags: z.array(z.string()).optional(),
-    position: z.number().optional(),
+    assignees: z.array(userSummary()),
+    subtaskCount: z.number().int(),
+    doneSubtaskCount: z.number().int(),
+    commentCount: z.number().int(),
+    createdAt: z.string(),
+    updatedAt: z.string(),
+    /** Only on a PATCH response: date edits that clash with the dependency chain. */
+    warnings: z.array(TaskDateConflictSchema).optional(),
   })
   .openapi('Task');
 

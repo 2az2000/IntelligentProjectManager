@@ -1,3 +1,10 @@
+import {
+  ACTIVITY_ACTIONS,
+  ACTIVITY_MAX_PAGE_SIZE,
+  ACTIVITY_PAGE_SIZE,
+  type ActivityAction,
+  type ActivityPage,
+} from '@managesys/contracts';
 import { Router } from 'express';
 import { z } from 'zod';
 import { logger } from '../../shared/logger';
@@ -19,13 +26,16 @@ export interface TaskAccess {
 export interface TaskActivityEvent {
   actorId: number;
   taskId: number;
-  action: 'created' | 'updated' | 'moved' | 'deleted';
+  action: ActivityAction;
   changes?: TaskFieldChange[];
 }
 
-/** One screenful of audit rows; "load more" fetches the next page with `cursor`. */
-export const ACTIVITY_PAGE_SIZE = 8;
-export const ACTIVITY_MAX_PAGE_SIZE = 50;
+// Page sizes are shared with the client so its "load more" asks for exactly one page.
+export { ACTIVITY_MAX_PAGE_SIZE, ACTIVITY_PAGE_SIZE };
+
+/** The column is a string in the database; anything unexpected reads as a plain edit. */
+const asAction = (value: string): ActivityAction =>
+  (ACTIVITY_ACTIONS as readonly string[]).includes(value) ? (value as ActivityAction) : 'updated';
 
 export class ActivityService {
   constructor(
@@ -70,7 +80,7 @@ export class ActivityService {
     userId: number,
     taskId: number,
     { limit = ACTIVITY_PAGE_SIZE, cursor }: { limit?: number; cursor?: number } = {},
-  ) {
+  ): Promise<ActivityPage> {
     await this.tasks.assertTaskAccess(userId, taskId, 'VIEWER');
     const take = Math.min(Math.max(limit, 1), ACTIVITY_MAX_PAGE_SIZE);
     // `take + 1` is the peek that tells us whether another page exists without a second query.
@@ -92,7 +102,7 @@ export class ActivityService {
       items: page.map((row) => ({
         id: row.id,
         taskId: row.taskId,
-        action: row.action,
+        action: asAction(row.action),
         field: row.field,
         oldValue: row.oldValue,
         newValue: row.newValue,

@@ -5,9 +5,21 @@ import { ZodError, z } from 'zod';
 import { AppError, NotFoundError } from '../errors';
 import { logger } from '../logger';
 
+/**
+ * `@managesys/contracts` builds its schemas with the zod instance the caller passes in, so a
+ * validation error can come from an equal-but-distinct `ZodError` class. Duck-type the shape
+ * instead of relying on `instanceof` alone, otherwise shared schemas would 500 instead of 400.
+ */
+const isZodError = (err: unknown): err is ZodError =>
+  err instanceof ZodError ||
+  (typeof err === 'object' &&
+    err !== null &&
+    (err as { name?: unknown }).name === 'ZodError' &&
+    Array.isArray((err as { issues?: unknown }).issues));
+
 function toAppError(err: unknown): AppError | null {
   if (err instanceof AppError) return err;
-  if (err instanceof ZodError) {
+  if (isZodError(err)) {
     return new AppError(400, 'VALIDATION_ERROR', 'Invalid request', z.flattenError(err));
   }
   if (err instanceof Prisma.PrismaClientKnownRequestError) {
