@@ -1,26 +1,48 @@
+# Build context is the repo root: the server depends on packages/contracts (file:).
+#   docker build -f server/Dockerfile .
+
+# ---- contracts -------------------------------------------------------------
+# Built in its own stage: the app's `npm ci` only links the package, it does not build it.
+FROM node:22-slim AS contracts
+WORKDIR /app
+COPY tsconfig.base.json ./
+COPY packages/contracts ./packages/contracts
+WORKDIR /app/packages/contracts
+RUN npm ci --no-audit --no-fund && npm run build
+
 # ---- build -----------------------------------------------------------------
 FROM node:22-slim AS build
 WORKDIR /app
 # Prisma engines need the OpenSSL shared library on Debian.
 RUN apt-get update -y && apt-get install -y --no-install-recommends openssl && rm -rf /var/lib/apt/lists/*
-COPY package*.json ./
-COPY prisma ./prisma
+COPY --from=contracts /app/packages/contracts ./packages/contracts
+COPY tsconfig.base.json ./
+WORKDIR /app/server
+COPY server/package*.json ./
+# The postinstall hook runs `prisma generate`, so the schema must be here before `npm ci`.
+COPY server/prisma ./prisma
+COPY server/prisma.config.ts ./
 RUN npm ci
-COPY tsconfig*.json ./
-COPY src ./src
+COPY server/tsconfig*.json ./
+COPY server/src ./src
 RUN npm run build && npm prune --omit=dev
 
 # ---- runtime ---------------------------------------------------------------
 FROM node:22-slim
 ENV NODE_ENV=production
-WORKDIR /app
 RUN apt-get update -y && apt-get install -y --no-install-recommends openssl && rm -rf /var/lib/apt/lists/*
-COPY --from=build /app/node_modules ./node_modules
-COPY --from=build /app/dist ./dist
-COPY --from=build /app/prisma ./prisma
+# Same tree as the build stage (/app/server + /app/packages): npm links the workspace package
+# with a *relative* symlink (node_modules/@managesys/contracts -> ../../../packages/contracts),
+# so moving the app to /app/node_modules would leave that link dangling.
+WORKDIR /app
+COPY --from=build /app/packages/contracts ./packages/contracts
+WORKDIR /app/server
+COPY --from=build /app/server/node_modules ./node_modules
+COPY --from=build /app/server/dist ./dist
+COPY --from=build /app/server/prisma ./prisma
 # Prisma 7 CLI reads DATABASE_URL from this config (the schema has no url block).
-COPY prisma.config.ts ./
-COPY package.json ./
+COPY --from=build /app/server/prisma.config.ts ./
+COPY --from=build /app/server/package.json ./
 # Attachment storage lives on a volume; ownership goes to the non-root user.
 RUN mkdir -p /app/uploads && chown -R node:node /app
 USER node

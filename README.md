@@ -64,7 +64,8 @@ Browser ──► Caddy ─┬─► Next.js client           (/)
 - **Server** is a modular monolith: `src/modules/<feature>/{domain,application,infrastructure,http}` with the dependency direction `http → application → domain ← infrastructure`. Modules talk to each other only through their `index.ts` (enforced by ESLint). Algorithms (graph, topological sort, critical path, ordering) are pure functions with unit tests.
 - **Client** is feature-sliced: `src/features/<feature>/{api,hooks,components,schemas,types.ts,index.ts}`; pages are thin Server Components; all server state goes through TanStack Query hooks and one axios instance with single-flight silent token refresh.
 - The client talks to the API over REST and axios (no Next.js Server Actions), so the API stays usable by other clients.
-- Interactive API docs (Swagger UI) are served at `/docs` outside production.
+- Interactive API docs (Swagger UI) are served at `/docs` outside production. The committed [`openapi.json`](openapi.json) is generated from the same schemas and drives the client's API types; CI fails when either is stale.
+- **Shared contract:** [`packages/contracts`](packages/contracts) holds the DTOs, vocabulary and payload rules both apps import, so a renamed field breaks `tsc` on both sides instead of a 400 in production. Task fan-out (socket + notifications) goes through a transactional outbox ([`server/src/modules/outbox`](server/src/modules/outbox)), so a crash after the commit cannot drop it.
 
 The phased plan and change log are in [`docs/01-ROADMAP.md`](docs/01-ROADMAP.md).
 
@@ -83,14 +84,19 @@ cp client/.env.example client/.env.local
 # 2) Database (+ Redis for jobs) — Postgres is exposed on port 5433
 docker compose up -d
 
-# 3) API  →  http://localhost:8000
+# 3) Shared API contract (installed once; the app scripts rebuild it on dev/build)
+cd packages/contracts
+npm install
+cd ../..
+
+# 4) API  →  http://localhost:8000
 cd server
 npm install
 npm run db:migrate      # apply migrations
 npm run db:seed         # demo users and projects
 npm run dev
 
-# 4) Web  →  http://localhost:3000
+# 5) Web  →  http://localhost:3000
 cd client
 npm install
 npm run dev
@@ -119,6 +125,9 @@ node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"
 | `server` | `npm run dev` | API with hot reload (`tsx watch`) |
 | `server` | `npm run db:studio` | Prisma Studio at `http://localhost:5555` |
 | `server` | `npm run db:deploy` | Apply migrations in production |
+| `server` | `npm run openapi:dump` | Rewrite [`openapi.json`](openapi.json) from the live schemas |
+| `client` | `npm run gen:api` | Regenerate [`api-types.ts`](client/src/lib/api-types.ts) from `openapi.json` |
+| `packages/contracts` | `npm run dev` | Watch-build the shared contract while editing it |
 | `server` | `npm test` | Unit + integration tests (uses a separate `<db>_test` database) |
 | `client` | `npm test` | Vitest + Testing Library + MSW |
 | `client` | `npm run test:e2e` | Playwright end-to-end suites |

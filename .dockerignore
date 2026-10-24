@@ -1,0 +1,19 @@
+# Both images build from the repo root (server/client need packages/contracts).
+**/node_modules
+**/dist
+**/.next
+**/coverage
+**/playwright-report
+**/test-results
+.git
+.freebuff
+backups
+backups/**
+screenshots
+docs
+openspec
+*.md
+.env
+.env.*
+!.env.example
+!.env.prod.example

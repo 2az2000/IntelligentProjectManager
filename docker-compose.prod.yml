@@ -24,7 +24,9 @@ services:
 
   client:
     build:
-      context: ./client
+      # Repo root: the client bundles the shared packages/contracts source.
+      context: .
+      dockerfile: client/Dockerfile
       args:
         NEXT_PUBLIC_API_URL: /api
         NEXT_PUBLIC_SOCKET_PATH: /api/socket.io
@@ -33,7 +35,9 @@ services:
       - server
 
   server:
-    build: ./server
+    build:
+      context: .
+      dockerfile: server/Dockerfile
     restart: unless-stopped
     environment:
       NODE_ENV: production

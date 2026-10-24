@@ -39,12 +39,20 @@ jobs:
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: server/package-lock.json
+          cache-dependency-path: |
+            server/package-lock.json
+            packages/contracts/package-lock.json
+      # The server imports @managesys/contracts (file:../packages/contracts); its dist must exist
+      # before `npm ci` links and `tsc` reads the types.
+      - run: npm ci --prefix ../packages/contracts && npm run build --prefix ../packages/contracts
       - run: npm ci
       - run: npm run lint
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
+      # /docs.json is the contract; the committed copy must match the running schemas.
+      - name: OpenAPI document is up to date
+        run: npm run openapi:dump && git diff --exit-code -- ../openapi.json
       # 2 high advisories remain inside prisma@7 transitive deps (hono/deepmerge-ts);
       # fixing them requires downgrading Prisma to 6, so the gate is critical-only.
       - name: npm audit (runtime dependencies)
@@ -64,10 +72,16 @@ jobs:
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: client/package-lock.json
+          cache-dependency-path: |
+            client/package-lock.json
+            packages/contracts/package-lock.json
+      - run: npm ci --prefix ../packages/contracts && npm run build --prefix ../packages/contracts
       - run: npm ci
       - run: npm run lint
       - run: npm run typecheck
       - run: npm run build
+      # Generated from the committed openapi.json — stale types fail here, not at runtime.
+      - name: API types are up to date
+        run: npm run gen:api && git diff --exit-code -- src/lib/api-types.ts
       - name: npm audit (runtime dependencies)
         run: npm audit --omit=dev --audit-level=high
