@@ -28,6 +28,7 @@ import { createSearchRouter } from './modules/search';
 import { createNotificationsModule } from './modules/notifications';
 import { createJobsModule } from './modules/jobs';
 import { createAiModule } from './modules/ai';
+import { createOutboxModule } from './modules/outbox';
 import { publish } from './shared/realtime/bus';
 
 export function createApp(deps: { db: Db } = { db: prisma }) {
@@ -131,6 +132,19 @@ export function createApp(deps: { db: Db } = { db: prisma }) {
   // Disabled in tests (and wherever REDIS_URL is unreachable). The weekly summary job needs the
   // AI service, which is why it is created first.
   const jobs = createJobsModule({ db, ai: ai.service });
+  // §Phase 8: every fan-out below goes through the outbox, so a crash after the commit but before
+  // the socket/notification work is retried by the poller instead of silently lost.
+  const outbox = createOutboxModule({ db }).service;
+  outbox.on('task.changed', (payload) => publish('task:changed', payload));
+  outbox.on('task.assigned', async (payload) => {
+    await notifications.service.create({
+      userId: payload.userId,
+      type: 'ASSIGNED',
+      actorId: payload.actorId,
+      taskId: payload.taskId,
+      projectId: payload.projectId,
+    });
+  });
 
   // Cross-module reaction without a hard dependency from projects to tasks.
   projects.service.hooks.onMemberRemoved = (projectId, userId) =>
@@ -141,7 +155,7 @@ export function createApp(deps: { db: Db } = { db: prisma }) {
   // HTTP response; only the BullMQ reminder scheduling stays fire-and-forget.
   tasks.service.hooks.onChanged = async (event) => {
     await activity.service.record({ actorId: event.actorId, taskId: event.taskId, action: event.kind, changes: event.changes });
-    publish('task:changed', {
+    await outbox.emit(db, 'task.changed', {
       projectId: event.projectId,
       taskId: event.taskId,
       kind: event.kind,
@@ -149,14 +163,16 @@ export function createApp(deps: { db: Db } = { db: prisma }) {
       changes: event.changes,
     });
     for (const userId of event.notifyUserIds ?? []) {
-      await notifications.service.create({
+      await outbox.emit(db, 'task.assigned', {
         userId,
-        type: 'ASSIGNED',
-        actorId: event.actorId,
-        taskId: event.taskId,
         projectId: event.projectId,
+        taskId: event.taskId,
+        actorId: event.actorId,
       });
     }
+    // Deliver before responding, exactly like the old synchronous fan-out; the poller in main.ts
+    // only matters when this process dies with rows still unpublished.
+    await outbox.drain();
     if (event.kind === 'created' || event.kind === 'updated') {
       void jobs.scheduleDueReminder(event.taskId);
     }
@@ -247,6 +263,7 @@ export function createApp(deps: { db: Db } = { db: prisma }) {
 
   // main.ts picks this up for graceful shutdown (no-op in tests).
   app.set('jobs', jobs);
+  app.set('outbox', outbox);
 
   return app;
 }

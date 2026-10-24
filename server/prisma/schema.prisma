@@ -438,3 +438,25 @@ model CommentReaction {
   @@unique([commentId, userId, emoji])
   @@index([commentId])
 }
+
+///
+/// §Phase 8 transactional outbox: a domain event is written by the request that caused it and
+/// published by a poller, so a crash between "state committed" and "socket/notification sent"
+/// cannot drop the event. Delivery is at-least-once; handlers must be idempotent.
+model DomainEvent {
+  id      Int    @id @default(autoincrement())
+  /// task.changed | task.assigned (see modules/outbox).
+  type    String
+  /// Payload handed to every subscriber of `type`.
+  payload Json
+
+  createdAt   DateTime  @default(now())
+  /// Null until a drain has delivered the event to all subscribers.
+  publishedAt DateTime?
+  attempts    Int       @default(0)
+  lastError   String?
+
+  /// The drain scans this index: oldest unpublished first.
+  @@index([publishedAt, id])
+  @@index([createdAt])
+}
