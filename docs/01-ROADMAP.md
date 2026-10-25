@@ -282,7 +282,7 @@
 - [x] **§۲.۱ ارسال واقعی ایمیل** — `shared/mail` با سه حالت smtp/json/off، کلیدهای `SMTP_URL`/`MAIL_FROM`/`MAIL_ENABLED`، وصل‌شدن reset و هر سه job (2026-10-24).
 - [ ] **Sentry (کلاینت + سرور)** — نیاز به DSN؛ `captureException` در error-handler با `requestId`.
 - [x] **E2E در CI** — job `e2e` با Postgres + migrate/seed + Chromium و آپلود trace؛ `/health` و کلاینت ۳۰۰۲ با `CORS_ORIGIN` درست، `JOBS_ENABLED=false` تا Redis لازم نباشد (2026-10-25).
-- [ ] **ترجیحات per-type اعلان** — امروز فقط یک سوییچ `notifyEmail` هست؛ سوییچ جدا برای digest/یادآور/هفتگی (مدل سبک JSON روی `User`).
+- [x] **ترجیحات per-type اعلان** — `User.emailPreferences` (JSONB، سه کلید digest/reminders/weekly)، resolver و واژگان در contracts، `PATCH /users/me` با merge جزئی، گیت `wantsEmail` روی هر سه ایمیل job، و سه سوییچ زیر کلید اصلی در تنظیمات (2026-10-25).
 
 **اولویت ۲ — ارزش روی موجودی**
 - [ ] **§۲.۲ خط پایه و انحراف (Baseline)** — `ScheduleBaseline` + snapshot از `buildSchedule` + variance + لایه‌ی Timeline.
@@ -311,6 +311,15 @@
 ---
 
 ## 📝 گزارش پیشرفت (Changelog)
+
+### 2026-10-25 — فاز ۹: ترجیحات اعلان per-type (§۲.۱)
+
+- **داده:** `User.emailPreferences` به‌صورت JSONB با سه کلید `digest`/`reminders`/`weekly`؛ `null` یعنی همه روشن، پس هیچ backfill لازم نبود (migration `20261025120000_email_notification_preferences`).
+- **قرارداد:** `EMAIL_NOTIFICATION_KINDS`، `DEFAULT_EMAIL_PREFERENCES`، `resolveEmailPreferences(stored)` و factory اسکیمای zod در `packages/contracts/src/user.ts`؛ سرور برای اعتبارسنجی و کلاینت برای رندر همان فهرست را می‌خوانند.
+- **API:** `PATCH /users/me` کلید `emailPreferences` را می‌پذیرد و فقط کلیدهای آمده را merge می‌کند؛ `UserDto` همیشه شیء کامل را برمی‌گرداند تا UI بدون fallback رندر شود. کلید ناشناخته یا مقدار غیر-boolean → ۴۰۰.
+- **رفتار:** `wantsEmail(user, kind)` در `jobs.module` هر ایمیل را از دو گیت عبور می‌دهد (کلید سراسری `notifyEmail` + کلید همان نوع)؛ یادآور، digest و گزارش هفتگی هر کدام نوع خودشان را می‌پرسند و اعلان درون‌برنامه‌ای دست‌نخورده می‌ماند.
+- **UI:** کارت «اعلان‌ها» حالا کلید اصلی + سه سوییچ دارد؛ با خاموش‌شدن کلید اصلی، سه سوییچ غیرفعال می‌شوند ولی مقدارشان پاک نمی‌شود.
+- **تأیید:** ۱۲ تست جدید/متأثر سبز (۳ resolver + ۳ gate + ۶ integration)؛ سناریوی واقعی در مرورگر: خاموش‌کردن digest در تنظیمات → ستون DB `{"digest": false, ...}` → بعد از reload همان‌طور می‌ماند → خاموش‌کردن کلید اصلی، هر سه زیرسوییچ را disabled کرد و برگرداندن آن مقادیر را حفظ کرد.
 
 ### 2026-10-25 — فاز ۹: E2E در CI و هدر جدید بورد
 
