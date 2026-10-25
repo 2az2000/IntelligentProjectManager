@@ -24,7 +24,7 @@ import type { ChatTurn } from '../types';
  * the prompt cannot write, so a VIEWER gets the same answers as an OWNER about data, and nothing
  * more.
  */
-export function ProjectChat({ projectId }: { projectId: number }) {
+export function ProjectChat({ projectId, compact = false }: { projectId: number; compact?: boolean }) {
   const t = useTranslations('Ai');
   const locale = useLocale();
   const toMessage = useErrorMessage();
@@ -56,10 +56,22 @@ export function ProjectChat({ projectId }: { projectId: number }) {
   return (
     <Sheet open={open} onOpenChange={setOpen}>
       <SheetTrigger asChild>
-        <Button variant="outline" size="sm" className="gap-1.5">
-          <Sparkles className="size-4" aria-hidden />
-          {t('chat')}
-        </Button>
+        {compact ? (
+          <Button
+            variant="ghost"
+            size="icon"
+            className="text-muted-foreground hover:text-foreground"
+            aria-label={t('chat')}
+            title={t('chat')}
+          >
+            <Sparkles className="size-4" aria-hidden />
+          </Button>
+        ) : (
+          <Button variant="outline" size="sm" className="gap-1.5">
+            <Sparkles className="size-4" aria-hidden />
+            {t('chat')}
+          </Button>
+        )}
       </SheetTrigger>
       <SheetContent side={locale === 'fa' ? 'left' : 'right'} className="flex w-full flex-col gap-0 sm:max-w-md">
         <SheetHeader className="border-b">

@@ -82,6 +82,7 @@
     "overdueCount": "{count} overdue",
     "dueOn": "Due {date}",
     "views": "Project views",
+    "versionBadge": "v1.0",
     "tabs": {
       "board": "Board",
       "list": "List",

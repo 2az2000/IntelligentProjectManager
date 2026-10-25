@@ -17,7 +17,7 @@ import { EmptyState } from '@/components/shared/empty-state';
 import { ErrorState } from '@/components/shared/error-state';
 import { BoardSkeleton, TableSkeleton } from '@/components/shared/loading-skeletons';
 import { hasRole, useProject, useProjectMembers } from '@/features/projects';
-import { BreakdownDialog } from '@/features/ai';
+import { BreakdownDialog, ProjectChat } from '@/features/ai';
 import { PresenceAvatars, useProjectSocket } from '@/features/realtime';
 import { FALLBACK_STATUSES, sortStatuses, useProjectStatuses } from '@/features/statuses';
 import { ProductTour } from '@/features/onboarding';
@@ -120,6 +120,7 @@ export function ProjectTasks({ projectId, view }: { projectId: number; view: 'bo
           >
             <Keyboard className="size-4" aria-hidden />
           </Button>
+          <ProjectChat projectId={projectId} compact />
           {canEdit && <BreakdownDialog projectId={projectId} />}
           {canEdit && (
             <div data-tour="new-task">

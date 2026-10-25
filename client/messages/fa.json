@@ -82,6 +82,7 @@
     "overdueCount": "{count} عقب‌افتاده",
     "dueOn": "سررسید {date}",
     "views": "نماهای پروژه",
+    "versionBadge": "نسخه ۱.۰",
     "tabs": {
       "board": "بورد",
       "list": "لیست",
