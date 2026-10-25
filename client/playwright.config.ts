@@ -13,6 +13,8 @@ export default defineConfig({
   retries: process.env.CI ? 2 : 0,
   workers: 1,
   reporter: process.env.CI ? 'github' : 'list',
+  // The CI job runs against `next dev`, so the first hit on a route pays its compile cost.
+  timeout: process.env.CI ? 60_000 : 30_000,
   use: {
     baseURL,
     trace: 'retain-on-failure',
@@ -26,7 +28,8 @@ export default defineConfig({
           command: 'npm run dev',
           url: baseURL,
           reuseExistingServer: false,
-          timeout: 120_000,
+          // Cold Next.js start plus the first compile of `/` takes ~1 min on a runner.
+          timeout: 180_000,
           env: { PORT: String(PORT) },
         },
         {
@@ -34,7 +37,7 @@ export default defineConfig({
           cwd: '../server',
           url: `http://localhost:${API_PORT}/health`,
           reuseExistingServer: false,
-          timeout: 120_000,
+          timeout: 180_000,
         },
       ]
     : [],

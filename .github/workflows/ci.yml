@@ -85,3 +85,64 @@ jobs:
         run: npm run gen:api && git diff --exit-code -- src/lib/api-types.ts
       - name: npm audit (runtime dependencies)
         run: npm audit --omit=dev --audit-level=high
+
+  e2e:
+    name: e2e (Playwright · real servers · seeded db)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      postgres:
+        # The dev database, not the test one: the specs drive the real app through the seed data
+        # (admin/sara and the "Website Redesign" project).
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: pm
+          POSTGRES_PASSWORD: pm
+          POSTGRES_DB: projectmanagement
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U pm -d projectmanagement"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgres://pm:pm@localhost:5433/projectmanagement
+      JWT_ACCESS_SECRET: ci-only-access-secret-with-32-chars!!
+      JWT_REFRESH_SECRET: ci-only-refresh-secret-with-32-chars!
+      # Playwright boots the client on 3002 (playwright.config.ts) beside the API on 8000.
+      CORS_ORIGIN: http://localhost:3002
+      NEXT_PUBLIC_API_URL: http://localhost:8000
+      # No Redis in this job; a queue connection would only add retry noise.
+      JOBS_ENABLED: 'false'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            client/package-lock.json
+            server/package-lock.json
+            packages/contracts/package-lock.json
+      - run: npm ci --prefix packages/contracts && npm run build --prefix packages/contracts
+      - name: Prepare the seeded dev database
+        run: npm ci --prefix server && npm run db:deploy --prefix server && npm run db:seed --prefix server
+      - run: npm ci --prefix client
+      - name: Install Chromium
+        working-directory: client
+        run: npx playwright install --with-deps chromium
+      # The config starts both dev servers itself when CI is set (reuseExistingServer: false).
+      - name: Run the phase 3/4/5 journeys
+        working-directory: client
+        run: npx playwright test
+      - name: Upload traces and screenshots on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            client/test-results
+            client/playwright-report
+          retention-days: 7
+          if-no-files-found: ignore
