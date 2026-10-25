@@ -452,6 +452,7 @@
     "fields": {
       "title": "Title",
       "status": "Status",
+      "statusKey": "Column",
       "priority": "Priority",
       "assigneeId": "Assignee",
       "assignees": "Assignees",
