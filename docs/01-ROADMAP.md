@@ -7,7 +7,7 @@
 
 ## 📍 وضعیت فعلی
 
-> **فاز جاری: ۷ — Advanced features** · آخرین به‌روزرسانی: 2026-10-18
+> **فاز جاری: فاز ۹ — بهبودها (در حال انجام)** · آخرین به‌روزرسانی: 2026-10-24
 > این بخش بعد از اتمام هر فاز به‌روز می‌شود. جزئیات هر تغییر در [گزارش پیشرفت](#-گزارش-پیشرفت-changelog) انتهای همین سند.
 
 | فاز | عنوان | هدف یک‌خطی | تخمین | وضعیت |
@@ -19,7 +19,9 @@
 | ۴ | Smart scheduling | Dependencyها، CPM، Timeline/Gantt، فایل پیوست | ۷–۱۰ روز | ✅ تمام |
 | ۵ | Real-time & Notifications | board زنده، اعلان، activity log، jobهای پس‌زمینه | ۶–۸ روز | ✅ تمام |
 | ۶ | Production-ready | تست، CI/CD، Docker، امنیت، مستندات API | ۵–۷ روز | ✅ تمام (Sentry به بهبودها منتقل شد) |
-| ۷ | Advanced features | تقویم شمسی، Command Palette، Workload heatmap، پیش‌بینی Monte Carlo، دستیار AI | ۱۰–۱۵ روز | 🟡 (AI، heatmap، چند‌مسئولی: انجام شد) |
+| ۷ | Advanced features | تقویم شمسی، Command Palette، Workload heatmap، پیش‌بینی Monte Carlo، دستیار AI | ۱۰–۱۵ روز | ✅ تمام (چت پروژه، گزارش هفتگی، pgvector و Deadline Planner: 2026-10-19) |
+| ۸ | Architecture & DX | contracts مشترک، تایپ از OpenAPI، outbox، tsconfig و imageهای مشترک | ۳–۴ روز | ✅ تمام (2026-10-24) |
+| ۹ | Improvements | بستن شکاف‌های واقعی و پیشنهادهای باز [03-IMPROVEMENTS.md](03-IMPROVEMENTS.md) | مستمر | 🟡 در حال انجام (ایمیل و منطقه‌ی زمانی: 2026-10-24) |
 
 راهنمای وضعیت: ✅ تمام · 🟡 در حال انجام · ⏳ شروع نشده · ⚠️ ناقص (توضیح در changelog)
 
@@ -240,7 +242,68 @@
 
 ---
 
-## بعد از فاز ۶
+## فاز ۹ — بهبودها (از [03-IMPROVEMENTS.md](03-IMPROVEMENTS.md))
+
+**هدف:** دو چیز در یک جا — (۱) هر پیشنهادی از سند بهبودها که ساخته شد، به‌عنوان تاریخچه ثبت شود تا دوباره پیشنهاد نشود؛ (۲) کارهای باقی‌مانده چک‌لیست اجرایی داشته باشند.
+
+### ۹.۱ اجراشده — پیشنهاد سند ← نتیجه در کد
+
+| حوزه | پیشنهاد در سند | آنچه ساخته شد | فاز |
+|---|---|---|---|
+| معماری | DTO/واژگان مشترک بین دو اپ | `packages/contracts`: واژگان، سقف‌ها، DTOها و factoryهای zod؛ هر دو اپ همان‌ها را consume می‌کنند | ۸ |
+| معماری | تایپ API از قرارداد، بدون drift | `openapi.json` از `/docs.json` + `api-types.ts` با `openapi-typescript` + سه assert `Equal` در `api-contract.ts` + گیت CI | ۸ |
+| معماری | رخداد دامنه‌ی قابل اتکا | outbox تراکنشی (`DomainEvent`، `emit/on/drain/prune`، poller ۲ ثانیه‌ای) و انتقال fan-out تسک به subscriber | ۸ |
+| DX | تنظیمات TypeScript مشترک | `tsconfig.base.json` در ریشه؛ سه پکیج فقط گزینه‌های مختص خود را دارند | ۸ |
+| DX | image و CI قابل بازتولید | Dockerfileها از ریشه‌ی repo، `.dockerignore`، CI با cache و گیت OpenAPI/نوع‌ها | ۸ |
+| Scheduling | پیش‌بینی احتمالاتی | Monte Carlo (P50/P85/P95) + نمایش در گزارش سه‌گانه | ۴/۷ |
+| Scheduling | مسیر بحرانی | CPM + critical path در `scheduling/domain/schedule.ts` و Timeline | ۴ |
+| Scheduling | «تا کِی تمام می‌شود؟» | Deadline Planner + سرویس `deadline-plan` | ۷ |
+| Scheduling | ریسک پروژه | risk score در `analytics.service` | ۷ |
+| Scheduling | تقویم کاری واقعی | تعطیلات ایران + `work-calendar` + محاسبه‌ی روز کاری | ۴ |
+| Scheduling | تضاد تاریخ دستی با dependency | `date-conflicts.ts` + هشدار غیرمسدودکننده در PATCH | ۴ |
+| Scheduling | توزیع بار تیم | workload heatmap + ظرفیت فردی + گزارش burndown/velocity | ۴ |
+| Scheduling | پیشرفت خودکار و تسک بی‌صاحب | پیشرفت از زیرتسک‌ها، فهرست بدون صاحب و انتقال مالکیت | ۴ |
+| AI | کمک هوشمند در جای‌های پرهزینه | enrich تسک، داکیومنت پروژه، چت با tool، خلاصه‌ی هفتگی/thread، برچسب خودکار، stand-up، جست‌وجوی معنایی pgvector | ۷ |
+| UX | کار سریع‌تر با کیبورد | Command Palette ⌘K، میانبرها، ویرایش درجا، Bulk، جست‌وجوی سراسری | ۳ |
+| UX | بورد قابل تنظیم | group-by در List، Saved Views، WIP limit، زیرتسک در popover | ۳/۴ |
+| UX | نوشتن و برگشت‌پذیری | Rich text با sanitize، Undo در toast، سطل زباله، تور آنبوردینگ | ۳ |
+| UX | شروع سریع پروژه | سه قالب پروژه + PWA + لندینگ | ۳/۶ |
+| همکاری | گفتگو روی کار | کامنت + واکنش + mention autocomplete + presence سطح تسک | ۵/۷ |
+| همکاری | اطلاع‌رسانی زنده | socket + اعلان درون‌برنامه + چندمسئولی + آواتار | ۵ |
+| حساب | بازیابی رمز و داده | reset با توکن یک‌بارمصرف، time tracking + بودجه/هزینه، CSV export، soft-delete | ۲/۷ |
+| عملیات | انتشار و پایش | CI چهارگانه + audit gate، compose prod با Caddy، backup روزانه، healthcheck، rate limit، origin guard، pgvector | ۶ |
+
+> جمع‌بندی: تمام موارد بالا در [03-IMPROVEMENTS.md §۸](03-IMPROVEMENTS.md) هم فهرست شده‌اند؛ این جدول فقط نگاشت «پیشنهاد ← نتیجه» است.
+
+### ۹.۲ باقی‌مانده — چک‌لیست اجرا
+
+**اولویت ۱ — بستن شکاف‌های واقعی (از §۲ سند)**
+- [x] **§۲.۱۰ منطقه‌ی زمانی و «امروز» درست** — `APP_TIME_ZONE`، helper واحد `dayBounds`، digest و cron واقعی + تست مرزی (2026-10-24).
+- [x] **§۲.۱ ارسال واقعی ایمیل** — `shared/mail` با سه حالت smtp/json/off، کلیدهای `SMTP_URL`/`MAIL_FROM`/`MAIL_ENABLED`، وصل‌شدن reset و هر سه job (2026-10-24).
+- [ ] **Sentry (کلاینت + سرور)** — نیاز به DSN؛ `captureException` در error-handler با `requestId`.
+- [ ] **E2E در CI** — job جدا با Playwright؛ تست‌های `client/e2e` از قبل هست.
+- [ ] **ترجیحات per-type اعلان** — امروز فقط یک سوییچ `notifyEmail` هست؛ سوییچ جدا برای digest/یادآور/هفتگی (مدل سبک JSON روی `User`).
+
+**اولویت ۲ — ارزش روی موجودی**
+- [ ] **§۲.۲ خط پایه و انحراف (Baseline)** — `ScheduleBaseline` + snapshot از `buildSchedule` + variance + لایه‌ی Timeline.
+- [ ] **§۲.۳ نقاط عطف (Milestone)** — مدل، progress از estimate، لوزی روی Timeline.
+- [ ] **Auto-scheduling زنجیره‌ای** — تغییر تخمین/تاریخ تسک، پایین‌دست را با flag سرکوب به‌روز کند.
+- [ ] **§۲.۴ Watch / Follow** — watcher برای تسک و پروژه و افزودن به گیرندگان اعلان.
+- [ ] **§۲.۵ Web Push** — `PushSubscription` + `web-push` در worker + VAPID.
+- [ ] **§۲.۶ فید ICS شخصی** — توکن قابل revoke + `GET /me/calendar.ics`.
+- [ ] **§۲.۸ مدیریت نشست‌ها** — `GET /auth/sessions` + revoke؛ بدون migration جدید جز metadata.
+- [ ] **§۲.۷ لینک اشتراک‌گذاری فقط‌خواندنی** — `ShareLink` با allow-list فیلد و expiry/revoke.
+
+**اولویت ۳ — گزارش و دقت**
+- [ ] **§۲.۹ گزارش وضعیت یک‌صفحه‌ای** — جمع‌کردن health + P85 + ریسک + انحراف + کارهای هفته + کپی Markdown.
+- [ ] **AI: کالیبره‌کردن تخمین با TimeEntry** — «تخمین اولیه vs ساعت واقعی» per عضو.
+- [ ] **§۲.۱۱ صف آفلاین PWA / Feature flag / اعتبارسنجی پاسخ در dev / axe / سهمیه‌ی پیوست / تمرین restore** — هر کدام S و مستقل.
+
+> بقیه‌ی تصمیم‌های باز (§۳–§۶ سند: Sprint، Recurrence، Custom fields، Workspace، SSO، 2FA، pnpm/Turborepo، Storybook، Object storage، Sentry/OTel) در همان سند می‌مانند و تا وقتی مشتری/داده‌ی واقعی نباشد شروع نمی‌شوند — جز مواردی که در همین چک‌لیست بالا آورده شده‌اند.
+
+---
+
+## بعد از فاز ۹
 پیشنهادهای توسعه‌ی بعدی در [03-IMPROVEMENTS.md](03-IMPROVEMENTS.md).
 
 **داکیومنت‌های یادگیری (فاز ۷):** مسیر آموزشی پروژه — [`server/LEARNING.md`](../server/LEARNING.md) و [`client/LEARNING.md`](../client/LEARNING.md)؛ هر ماژول/فیچر `LEARNING.md` خودش را دارد (الگوها، سینتکس، تمرین).
@@ -248,6 +311,99 @@
 ---
 
 ## 📝 گزارش پیشرفت (Changelog)
+
+### 2026-10-24 — فاز ۸: معماری و DX (contracts، OpenAPI types، Outbox، tsconfig مشترک)
+
+**پکیج مشترک `@managesys/contracts`**
+- `packages/contracts`: واژگان (`TASK_STATUSES`/`TASK_PRIORITIES`/`PROJECT_ROLES`)، سقف‌ها (عنوان، تگ، توضیح، HTML، امتیاز، تخمین) و DTOهای `TaskDto`/`ProjectDto`/`ActivityPage` حالا یک منبع حقیقت‌اند؛ سرور همان‌ها را برمی‌گرداند و کلاینت همان‌ها را تایپ می‌کند.
+- payloadها به‌صورت factory نوشته شدند (`createTaskPayloadSchema(z)`): هر اپ schema را با zod خودش می‌سازد. اگر پکیج خودش zod را import می‌کرد، `instanceof ZodError` در error-handler و `extendZodWithOpenApi` روی دو کلاس جدا می‌افتادند.
+- اتصال با `file:../packages/contracts` (بدون بازنویسی نصب/لاک‌فایل دو اپ)؛ `predev/prebuild/pretypecheck` آن را build می‌کند. Dockerfileها حالا از ریشه‌ی repo build می‌شوند و CI هم contracts را نصب و build می‌کند.
+- `error-handler` حالا `ZodError` را duck-type می‌کند (شکل یکسان، کلاس متفاوت).
+
+**Type-safe API از OpenAPI**
+- `server/scripts/dump-openapi.ts` + `npm run openapi:dump` سند `/docs.json` را در `openapi.json` ریشه می‌نویسد.
+- کلاینت با `openapi-typescript` آن را به `src/lib/api-types.ts` تبدیل می‌کند (`npm run gen:api`).
+- `src/lib/api-contract.ts` سه assert دقیق (`Equal`) دارد: `Task`، `Project` و `ActivityPage` تولیدشده باید دقیقاً با DTOهای contracts یکی باشند؛ هر drift یک خطای `tsc` است.
+- به همین دلیل `TaskSchema`/`ProjectSchema` سند OpenAPI کامل شدند (project/author/assignee/assignees/timestamps/warnings/stats) — قبلاً با DTO واقعی فاصله داشتند.
+- CI: سند و تایپ‌های تولیدشده باید به‌روز باشند (`git diff --exit-code`).
+
+**Outbox**
+- جدول `DomainEvent` (migration `20261024120000_phase8_outbox`) + `modules/outbox`: `emit` (با پشتیبانی از transaction client)، `on`، `drain`، `prune` (۷ روز).
+- fan-out تسک (socket + اعلان `ASSIGNED`) از hook به subscriberهای outbox منتقل شد؛ request بعد از emit همان‌جا `drain` می‌کند تا تأخیر قبلی حفظ شود و poller ۲ ثانیه‌ای در `main.ts` فقط تور ایمنی کرش است.
+- ۶ تست integration: publish، retry + `lastError`، `MAX_ATTEMPTS`، rollback تراکنشی، prune و سیم‌کشی واقعی روی `POST` تسک.
+
+**tsconfig مشترک**
+- `tsconfig.base.json` در ریشه؛ server/client/contracts فقط گزینه‌های مختص خودشان را نگه می‌دارند.
+
+**Docker (ریشه‌ی repo به‌عنوان context)**
+- هر دو image حالا `docker build -f server/Dockerfile .` (یا client) از ریشه build می‌شوند؛ `.dockerignore` اضافه شد. client و server روی یک base (`node:22-slim`) هستند تا باینری‌های native بین build/runtime قاطی نشوند.
+- باگ واقعی که در smoke-test پیدا شد: runtime سرور روی `/app/node_modules` می‌نشست ولی symlink نسبی npm (`node_modules/@managesys/contracts -> ../../../packages/contracts`) برای `/app/server` ساخته شده بود، پس image با `MODULE_NOT_FOUND` بالا نمی‌آمد. ساختار runtime حالا آینه‌ی build است (`/app/server` + `/app/packages/contracts`).
+
+**تأیید:** `typecheck`/`lint` هر دو اپ سبز · server ۲۲۱ تست (۳۴ فایل) و client ۱۰۹ تست (۲۳ فایل) سبز · `npm run build` سرور سبز · image کلاینت بالا آمد و `/fa/login` را ۲۰۰ داد · image سرور روی یک Postgres تمیز (pgvector) migrate شد و `/health` = ۲۰۰ و `/auth/login` = ۴۰۰ (اعتبارسنجی) · `openapi.json` و `api-types.ts` بازتولید شدند و بدون diff ماندند.
+- ⚠️ `next build` محلی روی ویندوز با dev-server در حال اجرا (`EBUSY` روی `.next`) شکست می‌خورد؛ build پروداکشن در image تأیید شد. برای build محلی اول `npm run dev` کلاینت را ببند.
+
+**باقی‌مانده‌ی آگاهانه:** pnpm + Turborepo، Storybook و CQRS سبک داشبورد.
+
+### 2026-10-23 (۲) — تاریخچه فعالیت: صفحه‌ی ۸تایی + «نمایش موارد بیشتر»
+
+- **مسئله:** تایم‌لاین تسک همه‌ی ردیف‌ها را یک‌جا می‌گرفت؛ یک ویرایش چندفیلدی چند ردیف می‌سازد و تاریخچه‌ی تسک‌های قدیمی شیت را به یک دیوار متن تبدیل می‌کرد.
+- قرارداد: `GET /tasks/:taskId/activity?limit=8&cursor=<id>` حالا `{ items, nextCursor, total, people }` برمی‌گرداند — `limit` پیش‌فرض ۸ (حداکثر ۵۰) و صفحه‌بندی keyset روی id، پس صفحه‌ها بدون offset و بدون تکرار/جاافتادگی‌اند. `total`/`people` (count + groupBy) روی کل تاریخچه حساب می‌شوند تا خلاصه‌ی هدر با هر صفحه عوض نشود. سند قرارداد: [02-API-CONTRACT.md](02-API-CONTRACT.md).
+- کلاینت: هوک `useActivity` به `useInfiniteQuery` تبدیل شد، `getNextPageParam` از `nextCursor` می‌آید و تایم‌لاین فقط ۸ ردیف اول را نشان می‌دهد؛ دکمه‌ی «نمایش موارد بیشتر» صفحه‌ی قدیمی‌تر را اضافه می‌کند (حین fetch غیرفعال، در صفحه‌ی آخر پنهان). گروه‌بندی روزانه و diff فیلدها دست‌نخورده ماندند.
+- **تأیید:** تست جدید سرور (۸ ردیف، `nextCursor`، صفحه‌ی دوم ۲ ردیف و جدا از صفحه‌ی اول، `limit=25` همه را برمی‌گرداند) و دو تست کامپوننت (۸ → کلیک → ۱۰ و حذف دکمه؛ پنهان‌بودن دکمه وقتی همان ۸ کافی است)؛ تست‌های realtime/assignees به شکل صفحه به‌روز شدند. بررسی زنده: شیت تسک با ۸ ردیف و دکمه‌ی «نمایش موارد بیشتر» بالا آمد و کلیک آن ردیف‌های قدیمی‌تر را اضافه کرد.
+
+### 2026-10-23 — §۴ Productivity و UX کامل شد (نمایش سریع زیرتسک در بورد)
+
+- **آخرین آیتم نیمه‌کاره‌ی §۴:** badge «۳/۵ زیرتسک» روی کارت بورد حالا دکمه است؛ popover همان‌جا لیست زیرتسک‌ها را نشان می‌دهد (آیکن انجام/باز، خط‌خوردگی روی انجام‌شده‌ها) و کلیک روی هر زیرتسک همان sheet را باز می‌کند.
+- `GET /tasks/:id` فقط زمانی صدا زده می‌شود که popover باز باشد (کامپوننت فقط در mount باز نصب می‌شود)، پس هزینه‌ی شبکه‌ی بورد تغییر نمی‌کند. شمارش `done/total` از payload فهرست می‌آید و قبل از fetch هم دیده می‌شود.
+- badge داخل کارت کلیک‌پذیر و drag sensor است؛ `stopPropagation` روی click/pointerdown تضمین می‌کند باز کردن popover نه کارت والد را باز کند نه درگ را شروع کند.
+- بقیه‌ی §۴ از قبل پیاده شده بود: میانبرها (`useTaskShortcuts`)، Command Palette، ویرایش درجا + Bulk، جست‌وجوی سراسری، group-by و Saved Views، WIP limit، Rich text، Undo، تور آنبوردینگ.
+- **تأیید:** ۳ تست جدید (`task-card.test.tsx`: شمارش قبل از fetch، باز شدن لیست زیرتسک‌ها، باز کردن زیرتسک بدون باز شدن کارت والد، و Enter روی badge بدون باز شدن کارت والد)؛ کل تست‌های کلاینت ۱۰۷/۱۰۷ سبز؛ `tsc --noEmit` سبز؛ eslint روی فایل‌های تغییریافته بدون خطا.
+
+---
+
+### 2026-10-20 — هشدار تضاد تاریخ دستی با dependencyها (§۴ Productivity و UX)
+
+- **مسئله:** dependency می‌گوید «بالادست قبل از شروع پایین‌دست تمام می‌شود»، ولی PATCH هر تاریخی را می‌پذیرفت و CPM فقط تاریخ‌های خالی را پر می‌کند — تضاد تا بازبینی دستی Gantt دیده نمی‌شد.
+- `scheduling/domain/date-conflicts.ts`: گذر transitively روی زنجیره (تسک میانیِ بی‌تاریخ هم دیده‌شدن A→C را نمی‌بندد)، نادیده‌گرفتن تسک‌های DONE در دو طرف، حداکثر ۳ هشدار به ترتیب شدت (`conflictDays`)؛ همان‌روز hand-off معتبر است.
+- `ScheduleService.findDateWarnings` روی همان `loadScheduleInput`، وصل‌شده با hook `tasks.service.hooks.dateWarnings`. فقط وقتی `startDate`/`dueDate` در PATCH آمده باشد اجرا می‌شود و خطایش write را نمی‌شکند (فقط `logger.warn`).
+- قرارداد: پاسخ `PATCH /tasks/:taskId` حالا `warnings[]` اختیاری دارد (`DEPENDENCY_DATE_CONFLICT`، `direction: predecessor|successor`، تسک مرتبط، روزهای هم‌پوشانی)؛ بدون تضاد کلید حذف می‌شود، پس کلاینت قدیمی چیزی نمی‌بیند.
+- UI: بنر کهربایی در TaskSheet با متن انسانی، دکمه‌ی «باز کردن» تسک متضاد و بستن. چون بدنه‌ی Sheet با `updatedAt` remount می‌شود، `useUpdateTask` هشدارها را در کش مختص خودشان (`qk.taskWarnings`) می‌نویسد و Sheet از آنجا می‌خواند — onSuccess سطح mutate در این remount از دست می‌رفت (تست واقعی در مرورگر همین را نشان داد).
+- **تأیید:** سرور ۲۰۰/۲۰۰ (۷ تست واحد date-conflicts + ۳ تست integration روی PATCH: هشدار، جهت معکوس، سکوت برای ویرایش بی‌تاریخ/تاریخ سازگار/همسایه‌ی DONE)، کلاینت ۹۸/۹۸ (۳ تست بنر + ۳ تست ثبت/پاک‌کردن هشدار در کش)؛ `tsc` و lint هر دو سبز؛ سناریوی واقعی در مرورگر: تاریخ متضاد ⇒ بنر با نام تسک و روزهای تضاد، «باز کردن» ⇒ تسک متضاد، بستن ⇒ پاک‌شدن بنر.
+
+---
+
+### 2026-10-19 — فاز ۷ کامل شد: چت پروژه، گزارش هفتگی، جست‌وجوی معنایی، Deadline Planner
+
+**AI chat با پروژه — خواندن بدون نوشتن**
+- `POST /projects/:projectId/ai/chat` (VIEWER+): snapshot ساختاریافته از پروژه، اعضا و بار کاری، تسک‌های باز، وابستگی‌های مسدودکننده و ActivityLog هفت روز؛ نقش پرسش‌کننده در snapshot می‌آید ولی ابزار نوشتن وجود ندارد، پس VIEWER هم پاسخ می‌گیرد و هیچ‌چیز تغییر نمی‌کند.
+- تاریخچه با دو سقف محدود می‌شود (۱۲ نوبت و ۱۶k کاراکتر؛ Zod آخرین پیام را `user` می‌خواهد) تا پنجره‌ی مدل رایگان و سهمیه‌ی کاربر با پیام‌های قدیمی نسوزد.
+- UI: دکمه‌ی «چت پروژه» در هدر پروژه (Sheet کنار صفحه در RTL)، سه پرسش نمونه، Enter=ارسال، پاک کردن گفتگو و toast خطای ترجمه‌شده.
+
+**گزارش هفتگی پروژه — یک متد، دو مسیر**
+- تولید گزارش از داده‌ی واقعی هفت روز (`completed/created/open/overdue/blocked/activity/activeMembers` + تسک‌های سرآمد و بلاکرها) در متد مشترک سرویس؛ `POST /projects/:id/ai/weekly-summary` همیشه برای پیش‌نمایش در دسترس است.
+- job دوشنبه ۰۸:۰۰ (BullMQ) روی همان متد: برای هر پروژه‌ی دارای فعالیت/تحویل، به ازای هر زبان اعضا **یک** فراخوانی مدل، سپس اعلان `WEEKLY_SUMMARY` و ایمیل برای اعضای `notifyEmail`؛ شکست یک پروژه بقیه را متوقف نمی‌کند.
+- `NotificationDto` حالا `projectId/projectName` دارد (ردیف‌های سطح پروژه)؛ Bell با کلیک روی گزارش به تنظیمات همان پروژه می‌رود.
+- UI: کارت «خلاصه‌ی هفتگی با AI» در تنظیمات پروژه با آمار، پیش‌نمایش Markdown و کپی.
+
+**جست‌وجوی معنایی با pgvector**
+- migration `20261019000000_add_task_embeddings`: `Task.embedding vector(1536)` + ایندکس HNSW با فاصله‌ی کسینوسی؛ `docker-compose` و CI به `pgvector/pgvector:pg16` سوییچ کردند (همان volume قبلی).
+- embed خودکار fire-and-forget فقط وقتی عنوان/توضیح تغییر کند؛ `POST /projects/:id/ai/embeddings/backfill` برای تسک‌های قدیمی (۲۰۰ مورد، بچ ۱۶تایی، idempotent).
+- `GET /search` هیبرید شد: نتایج کلمه‌ای اول، سپس نزدیک‌ترین embeddingهایی که کلمه پیدا نکرده (`match: 'semantic'` + `similarity`)؛ همه‌چیز محدود به پروژه‌های عضو. بدون کلید یا با خطای ارائه‌دهنده، جست‌وجو کلمه‌ای می‌ماند و `semantic.reason` دلیل را می‌گوید (`not_configured`/`provider_error`) — هرگز ۵۰۰.
+- UI: کلید جرقه در جعبه‌ی جست‌وجوی سراسری (opt-out)، badge تطابق معنایی، و کارت وضعیت/بک‌فیل در تنظیمات پروژه.
+
+**تقویم Deadline Planner — معکوس CPM**
+- `GET /projects/:id/plan?by=&confidence=50|85|95`: بازه‌ی کاری بین امروز و تاریخ هدف (با احترام به آخر هفته و تعطیلات رسمی) منهای بودجه‌ی Monte Carlo همان صدک؛ اختلاف یک buffer است که همه‌ی گره‌های CPM را جابه‌جا می‌کند، پس یال‌های finish-to-start معتبر می‌مانند.
+- خروجی صریح است: `feasible`، `bufferHours/bufferWorkingDays`، آخرین شروع/پایان هر تسک و `mustStartNow[]`؛ buffer منفی پنهان نمی‌شود و تاریخ‌ها به anchor کلمپ می‌شوند تا «از قبل عقب افتاده» دیده شود.
+- UI: کارت «برنامه‌ریز معکوس» بالای Gantt با date picker شمسی، انتخاب P50/P85/P95، badge شدنی/نشدنی، فهرست «باید امروز شروع شود» و جدول آخرین شروع/پایان.
+
+**بهبودهای همراه**
+- Command Palette (`⌘K`/`Ctrl+K`): ناوبری، پرش به پروژه، جست‌وجوی تسک و تغییر تم در یک لیست با کیبورد — بدون وابستگی جدید؛ دکمه‌ی راهنما در Navbar.
+- دیالوگ «شکستن PRD به تسک» (`BreakdownDialog`) در بورد: پیش‌نمایش با انتخاب تسک‌ها، ساخت از مسیرهای عادی و اتصال dependencyهای ایندکسی.
+- پرش کامنت‌های جست‌وجوی سراسری حالا از `projectId` واقعی استفاده می‌کند (قبلاً پروژه‌ی ۱ هاردکد بود).
+
+**تأیید:** `tsc` سرور/کلاینت سبز؛ lint سرور بدون خطا و کلاینت بدون error (۲ warning قدیمی React Compiler)؛ تست‌های جدید — ۷ واحد ریاضیات planner، ۵ chat/summary، ۴ pgvector search/backfill (stub یک-hot با ۱۵۳۶ بعد)، ۴ endpoint plan و ۱ اعلان سطح پروژه؛ **سرور ۱۹۰/۱۹۰**، **کلاینت ۹۲/۹۲**، build هر دو موفق. جزئیات قرارداد و DTOها در [02-API-CONTRACT.md](02-API-CONTRACT.md).
+
+---
 
 ### 2026-10-18 (۲) — همکاری: واکنش به کامنت، منشن هوشمند، حضور سطح تسک
 
