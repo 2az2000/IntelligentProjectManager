@@ -60,6 +60,10 @@ const UserSchema = z
     locale: z.string().optional(),
     theme: z.string().nullable().optional(),
     notifyEmail: z.boolean().optional(),
+    /** §2.1 per-kind switches, already resolved with defaults (never partially null). */
+    emailPreferences: z
+      .object({ digest: z.boolean(), reminders: z.boolean(), weekly: z.boolean() })
+      .optional(),
     /** §4 first-run tour stamp (null until finished or skipped). */
     onboardedAt: z.string().nullable().optional(),
   })
@@ -477,7 +481,7 @@ register({
 register({
   method: 'patch',
   path: '/users/me',
-  summary: 'Update my profile (name, avatar, locale, theme, notifyEmail)',
+  summary: 'Update my profile (name, avatar, locale, theme, notifyEmail, emailPreferences)',
   tags: ['Users'],
   security: auth,
   request: {
@@ -490,6 +494,10 @@ register({
             locale: z.string(),
             theme: z.string().nullable(),
             notifyEmail: z.boolean(),
+            /** §2.1: only the kinds sent are changed; omitted ones keep their stored value. */
+            emailPreferences: z
+              .object({ digest: z.boolean(), reminders: z.boolean(), weekly: z.boolean() })
+              .partial(),
             /** §4 onboarding stamp (ISO date, or null to replay the tour). */
             onboardedAt: z.string().datetime().nullable(),
           })

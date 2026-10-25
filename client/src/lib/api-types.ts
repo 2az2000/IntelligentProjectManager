@@ -540,7 +540,7 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        /** Update my profile (name, avatar, locale, theme, notifyEmail) */
+        /** Update my profile (name, avatar, locale, theme, notifyEmail, emailPreferences) */
         patch: {
             parameters: {
                 query?: never;
@@ -557,6 +557,11 @@ export interface paths {
                         locale?: string;
                         theme?: string | null;
                         notifyEmail?: boolean;
+                        emailPreferences?: {
+                            digest?: boolean;
+                            reminders?: boolean;
+                            weekly?: boolean;
+                        };
                         /** Format: date-time */
                         onboardedAt?: string | null;
                     };
@@ -4136,6 +4141,11 @@ export interface components {
             locale?: string;
             theme?: string | null;
             notifyEmail?: boolean;
+            emailPreferences?: {
+                digest: boolean;
+                reminders: boolean;
+                weekly: boolean;
+            };
             onboardedAt?: string | null;
         };
         Error: {

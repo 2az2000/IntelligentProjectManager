@@ -602,7 +602,15 @@
     "notificationsTitle": "اعلان‌ها",
     "notificationsDescription": "نحوه‌ی دریافت هشدارها را تنظیم کنید.",
     "emailNotifications": "اعلان ایمیلی",
-    "emailNotificationsDescription": "دریافت خلاصه‌ی روزانه از طریق ایمیل.",
+    "emailNotificationsDescription": "اگر خاموش باشد هیچ ایمیلی فرستاده نمی‌شود؛ اعلان‌های درون‌برنامه‌ای سر جایشان هستند.",
+    "emailKinds": {
+      "digest": "خلاصه‌ی روزانه",
+      "digestDescription": "هر روز صبح کارهای امروز و عقب‌افتاده‌ها.",
+      "reminders": "یادآور سررسید",
+      "remindersDescription": "یک روز قبل از موعد هر تسک.",
+      "weekly": "گزارش هفتگی پروژه",
+      "weeklyDescription": "دوشنبه‌ها خلاصه‌ی پیشرفت پروژه‌های فعال."
+    },
     "pushNotifications": "اعلان مرورگر",
     "pushNotificationsDescription": "دریافت به‌روزرسانی‌های لحظه‌ای در مرورگر.",
     "saveChanges": "ذخیره‌ی تغییرات"

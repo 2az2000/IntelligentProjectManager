@@ -50,8 +50,11 @@ model User {
   avatarUrl    String?
   locale       String    @default("fa")
   theme        String?
-  /// Phase 5: daily digest + due-date reminder emails (nodemailer in dev logs to console).
+  /// Phase 5: daily digest + due-date reminder emails (master switch).
   notifyEmail  Boolean   @default(true)
+  /// §2.1: which mails still go out when `notifyEmail` is on, as `{digest, reminders, weekly}`.
+  /// Null (or a missing key) means "on" — the column predates the per-kind switches.
+  emailPreferences Json?
   /// §4 onboarding: when the first-run tour was finished or skipped (null = never shown).
   onboardedAt  DateTime?
 

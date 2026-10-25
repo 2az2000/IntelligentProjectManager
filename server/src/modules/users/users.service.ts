@@ -4,7 +4,12 @@ import path from 'node:path';
 import { env } from '../../config/env';
 import { ConflictError, NotFoundError, ValidationError } from '../../shared/errors';
 import type { UsersRepository } from './users.repository';
-import type { User, UserProfileChanges, UserSearchResult } from './users.types';
+import {
+  emailPreferencesOf,
+  type User,
+  type UserProfileChanges,
+  type UserSearchResult,
+} from './users.types';
 
 export const normalizeEmail = (email: string) => email.trim().toLowerCase();
 
@@ -50,7 +55,12 @@ export class UsersService {
 
   async updateProfile(id: number, changes: UserProfileChanges): Promise<User> {
     const current = await this.getById(id);
-    const user = await this.users.update(id, { ...changes, name: changes.name?.trim() });
+    const patch: UserProfileChanges = { ...changes, name: changes.name?.trim() };
+    // §2.1: a PATCH carries only the switches it touched; the rest keep their stored value.
+    if (changes.emailPreferences) {
+      patch.emailPreferences = { ...emailPreferencesOf(current), ...changes.emailPreferences };
+    }
+    const user = await this.users.update(id, patch);
     // Clearing or replacing the photo must not leave the old upload behind on disk.
     if (changes.avatarUrl !== undefined && changes.avatarUrl !== current.avatarUrl) {
       await this.removeAvatarFile(current.avatarUrl);

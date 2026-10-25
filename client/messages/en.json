@@ -602,7 +602,15 @@
     "notificationsTitle": "Notifications",
     "notificationsDescription": "Configure how you receive alerts.",
     "emailNotifications": "Email Notifications",
-    "emailNotificationsDescription": "Receive daily summaries via email.",
+    "emailNotificationsDescription": "Off means no email at all; in-app notifications stay as they are.",
+    "emailKinds": {
+      "digest": "Daily digest",
+      "digestDescription": "Today's work and anything overdue, every morning.",
+      "reminders": "Due reminders",
+      "remindersDescription": "One day before a task is due.",
+      "weekly": "Weekly project report",
+      "weeklyDescription": "Progress of active projects, on Mondays."
+    },
     "pushNotifications": "Push Notifications",
     "pushNotificationsDescription": "Receive real-time updates in browser.",
     "saveChanges": "Save Changes"

@@ -295,6 +295,7 @@ export const handlers = [
       locale: 'fa',
       theme: null,
       notifyEmail: true,
+      emailPreferences: { digest: true, reminders: true, weekly: true },
     }),
   ),
   http.get(`${API}/projects`, () => HttpResponse.json([project])),
@@ -372,6 +373,7 @@ export const handlers = [
       locale: 'fa',
       theme: null,
       notifyEmail: false,
+      emailPreferences: { digest: true, reminders: true, weekly: true },
     }),
   ),
 

@@ -2,6 +2,7 @@ import { createReadStream } from 'node:fs';
 import { Router } from 'express';
 import multer from 'multer';
 import { z } from 'zod';
+import { emailPreferencesSchema } from '@managesys/contracts';
 import { NotFoundError, ValidationError } from '../../shared/errors';
 import { currentUserId, requireAuth } from '../../shared/auth/require-auth';
 import { handle } from '../../shared/http/handle';
@@ -17,6 +18,8 @@ const updateMeBody = z
     locale: z.enum(LOCALES),
     theme: z.enum(THEMES).nullable(),
     notifyEmail: z.boolean(),
+    /** §2.1 per-kind switches: omitted kinds keep their stored value. */
+    emailPreferences: emailPreferencesSchema(z),
     /** §4 onboarding: the client stamps this once the tour is finished or skipped. */
     onboardedAt: z.coerce.date().nullable(),
   })

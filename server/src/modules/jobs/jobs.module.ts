@@ -1,5 +1,6 @@
 import { Queue, Worker, type Job, type Processor } from 'bullmq';
 import IORedis, { type Redis } from 'ioredis';
+import { resolveEmailPreferences, type EmailNotificationKind } from '@managesys/contracts';
 import { env, isTest } from '../../config/env';
 import { logger } from '../../shared/logger';
 import { mailer } from '../../shared/mail';
@@ -95,6 +96,15 @@ function digestEmail(locale: string, name: string, digest: Digest) {
   };
 }
 
+/**
+ * Both gates must agree before a mail goes out: the account-wide `notifyEmail` switch and the
+ * per-kind switch (§2.1). In-app notifications ignore both on purpose.
+ */
+export const wantsEmail = (
+  user: { notifyEmail: boolean; emailPreferences: unknown },
+  kind: EmailNotificationKind,
+): boolean => user.notifyEmail && resolveEmailPreferences(user.emailPreferences)[kind];
+
 /** The lead plus every co-assignee, de-duplicated and in a stable order. */
 const assigneeIdsOf = (task: {
   assigneeId: number | null;
@@ -145,23 +155,35 @@ export function createJobsModule(deps: { db: Db; ai: AiService }): Jobs {
     // Everyone on the task is reminded — not just the lead.
     const assignees = await db.user.findMany({
       where: { id: { in: assigneeIds } },
-      select: { id: true, name: true, email: true, locale: true, notifyEmail: true },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        locale: true,
+        notifyEmail: true,
+        emailPreferences: true,
+      },
     });
     for (const assignee of assignees) {
       await db.notification.create({
         data: { userId: assignee.id, type: 'DUE_REMINDER', taskId: job.taskId },
       });
       publish('notification:new', { userId: assignee.id, type: 'DUE_REMINDER' });
-      if (!assignee.notifyEmail) continue;
+      if (!wantsEmail(assignee, 'reminders')) continue;
       const email = dueReminderEmail(assignee.locale, assignee.name, task.title, task.dueDate.toISOString());
       await mailer.send({ to: assignee.email, subject: email.subject, text: email.body });
     }
   };
 
   const processDigest = async (db: Db) => {
-    const users = await db.user.findMany({ where: { notifyEmail: true }, select: { id: true, name: true, email: true, locale: true } });
+    const users = await db.user.findMany({
+      where: { notifyEmail: true },
+      select: { id: true, name: true, email: true, locale: true, notifyEmail: true, emailPreferences: true },
+    });
 
     for (const user of users) {
+      // §2.1: silence the digest without touching reminders or the weekly report.
+      if (!wantsEmail(user, 'digest')) continue;
       const projectIds = (
         await db.projectMember.findMany({
           where: { userId: user.id, project: { deletedAt: null } },
@@ -196,7 +218,16 @@ export function createJobsModule(deps: { db: Db; ai: AiService }): Jobs {
         name: true,
         members: {
           select: {
-            user: { select: { id: true, name: true, email: true, locale: true, notifyEmail: true } },
+            user: {
+              select: {
+                id: true,
+                name: true,
+                email: true,
+                locale: true,
+                notifyEmail: true,
+                emailPreferences: true,
+              },
+            },
           },
         },
       },
@@ -231,7 +262,7 @@ export function createJobsModule(deps: { db: Db; ai: AiService }): Jobs {
         for (const { user } of members) {
           await db.notification.create({ data: { userId: user.id, type: 'WEEKLY_SUMMARY', projectId: project.id } });
           publish('notification:new', { userId: user.id, type: 'WEEKLY_SUMMARY' });
-          if (!user.notifyEmail) continue;
+          if (!wantsEmail(user, 'weekly')) continue;
           await mailer.send({
             to: user.email,
             subject: isFa ? `گزارش هفتگی «${project.name}»` : `Weekly report — ${project.name}`,

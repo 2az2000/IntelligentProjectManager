@@ -1,3 +1,4 @@
+import type { EmailPreferences } from '@managesys/contracts';
 import { apiClient } from '@/lib/api-client';
 import type { User } from '@/features/auth';
 
@@ -14,6 +15,8 @@ export interface ProfileInput {
   locale?: 'fa' | 'en';
   theme?: 'light' | 'dark' | 'system' | null;
   notifyEmail?: boolean;
+  /** §2.1 partial update: omitted kinds keep their stored value. */
+  emailPreferences?: Partial<EmailPreferences>;
   /** §4 onboarding stamp — set once the first-run tour is finished or skipped. */
   onboardedAt?: string | null;
 }

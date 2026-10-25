@@ -98,6 +98,25 @@
           "notifyEmail": {
             "type": "boolean"
           },
+          "emailPreferences": {
+            "type": "object",
+            "properties": {
+              "digest": {
+                "type": "boolean"
+              },
+              "reminders": {
+                "type": "boolean"
+              },
+              "weekly": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "digest",
+              "reminders",
+              "weekly"
+            ]
+          },
           "onboardedAt": {
             "type": "string",
             "nullable": true
@@ -2253,7 +2272,7 @@
     },
     "/users/me": {
       "patch": {
-        "summary": "Update my profile (name, avatar, locale, theme, notifyEmail)",
+        "summary": "Update my profile (name, avatar, locale, theme, notifyEmail, emailPreferences)",
         "tags": [
           "Users"
         ],
@@ -2288,6 +2307,20 @@
                   },
                   "notifyEmail": {
                     "type": "boolean"
+                  },
+                  "emailPreferences": {
+                    "type": "object",
+                    "properties": {
+                      "digest": {
+                        "type": "boolean"
+                      },
+                      "reminders": {
+                        "type": "boolean"
+                      },
+                      "weekly": {
+                        "type": "boolean"
+                      }
+                    }
                   },
                   "onboardedAt": {
                     "type": "string",

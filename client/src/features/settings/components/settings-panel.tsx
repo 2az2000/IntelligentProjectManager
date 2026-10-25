@@ -4,6 +4,11 @@ import { useRef, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Camera, ImageUp, Loader2, Trash2 } from 'lucide-react';
+import {
+  EMAIL_NOTIFICATION_KINDS,
+  type EmailNotificationKind,
+  type EmailPreferences,
+} from '@managesys/contracts';
 import { useLocale, useTranslations } from 'next-intl';
 import { useTheme, type Theme } from '@/lib/theme';
 import { toast } from 'sonner';
@@ -47,7 +52,10 @@ export function SettingsPanel() {
     <div className="flex flex-col gap-6">
       <ProfileCard key={user.id} user={user} />
       <PreferencesCard />
-      <NotificationsCard notifyEmail={user.notifyEmail ?? true} />
+      <NotificationsCard
+        notifyEmail={user.notifyEmail ?? true}
+        emailPreferences={user.emailPreferences}
+      />
       <PasswordCard />
     </div>
   );
@@ -338,11 +346,33 @@ const passwordSchema = z
   })
   .refine((v) => v.newPassword === v.confirm, { message: 'passwordsDontMatch', path: ['confirm'] });
 
-/** Per-user email delivery toggle (reminders and daily digests). */
-function NotificationsCard({ notifyEmail }: { notifyEmail: boolean }) {
+/**
+ * Email delivery: one master switch plus the per-kind switches (digest / reminders / weekly).
+ * In-app notifications are not affected by either — this card is about the inbox only.
+ */
+function NotificationsCard({
+  notifyEmail,
+  emailPreferences,
+}: {
+  notifyEmail: boolean;
+  emailPreferences: EmailPreferences;
+}) {
   const t = useTranslations('Settings');
   const toMessage = useErrorMessage();
   const update = useUpdateProfile();
+
+  const save = (input: { notifyEmail?: boolean; emailPreferences?: Partial<EmailPreferences> }) =>
+    update.mutate(input, {
+      onSuccess: () => toast.success(t('saved')),
+      onError: (e) => toast.error(toMessage(e)),
+    });
+
+  const toggleKind = (kind: EmailNotificationKind, enabled: boolean) => {
+    // A partial patch: the server merges it, the other kinds keep their stored value.
+    const emailPreferences: Partial<EmailPreferences> = {};
+    emailPreferences[kind] = enabled;
+    save({ emailPreferences });
+  };
 
   return (
     <Card>
@@ -350,19 +380,12 @@ function NotificationsCard({ notifyEmail }: { notifyEmail: boolean }) {
         <CardTitle>{t('notificationsTitle')}</CardTitle>
         <CardDescription>{t('notificationsDescription')}</CardDescription>
       </CardHeader>
-      <CardContent>
+      <CardContent className="flex flex-col gap-4">
         <label className="flex cursor-pointer items-center gap-3">
           <Checkbox
             checked={notifyEmail}
-            onCheckedChange={(checked) =>
-              update.mutate(
-                { notifyEmail: checked === true },
-                {
-                  onSuccess: () => toast.success(t('saved')),
-                  onError: (e) => toast.error(toMessage(e)),
-                },
-              )
-            }
+            disabled={update.isPending}
+            onCheckedChange={(checked) => save({ notifyEmail: checked === true })}
           />
           <span className="flex flex-col gap-0.5">
             <span className="text-sm font-medium">{t('emailNotifications')}</span>
@@ -371,6 +394,30 @@ function NotificationsCard({ notifyEmail }: { notifyEmail: boolean }) {
             </span>
           </span>
         </label>
+
+        <div
+          className={cn(
+            'flex flex-col gap-3 border-t pt-4',
+            !notifyEmail && 'opacity-50',
+          )}
+        >
+          {EMAIL_NOTIFICATION_KINDS.map((kind) => (
+            <label key={kind} className="flex cursor-pointer items-start gap-3">
+              <Checkbox
+                className="mt-0.5"
+                checked={emailPreferences[kind]}
+                disabled={!notifyEmail || update.isPending}
+                onCheckedChange={(checked) => toggleKind(kind, checked === true)}
+              />
+              <span className="flex flex-col gap-0.5">
+                <span className="text-sm">{t(`emailKinds.${kind}`)}</span>
+                <span className="text-muted-foreground text-xs">
+                  {t(`emailKinds.${kind}Description`)}
+                </span>
+              </span>
+            </label>
+          ))}
+        </div>
       </CardContent>
     </Card>
   );
