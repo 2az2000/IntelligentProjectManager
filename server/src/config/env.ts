@@ -22,6 +22,22 @@ const envSchema = z.object({
   REFRESH_TOKEN_TTL_DAYS: z.coerce.number().int().positive().default(7),
   // Phase 4: working-day calendar for scheduling (weekend days; Thu/Fri = Iran default).
   WORKING_WEEKEND: z.string().default('THURSDAY,FRIDAY'),
+  // §2.10: calendar-day boundaries and the digest/reminder cron run in this zone. The images
+  // are UTC, so without it "today" starts at 03:30 Tehran and 08:00 fires at 11:30.
+  APP_TIME_ZONE: z
+    .string()
+    .default('Asia/Tehran')
+    .refine(
+      (timeZone) => {
+        try {
+          new Intl.DateTimeFormat('en-US', { timeZone });
+          return true;
+        } catch {
+          return false;
+        }
+      },
+      { message: 'must be a valid IANA time zone, e.g. Asia/Tehran' },
+    ),
   // Phase 4: disk-local attachment storage.
   UPLOAD_DIR: z.string().default('uploads'),
   MAX_UPLOAD_MB: z.coerce.number().int().positive().default(10),
@@ -77,6 +93,13 @@ const envSchema = z.object({
   AI_EMBEDDING_MODEL: z.string().default('openai/text-embedding-3-small'),
   AI_EMBEDDING_API_KEY: z.string().min(1).optional(),
   AI_EMBEDDING_BASE_URL: z.url().optional(),
+  // §2.1: real email delivery. Without SMTP_URL the mailer stays in "json" mode (logs the
+  // message) so development and tests never need a mail server. MAIL_ENABLED=false turns
+  // delivery off entirely. MAIL_FROM is the RFC 5322 From header.
+  SMTP_URL: z.string().min(1).optional(),
+  MAIL_FROM: z.string().default('ManageSys <noreply@managesys.local>'),
+  MAIL_ENABLED: z
+    .preprocess((value) => (value === undefined || value === '' ? undefined : value === 'true' || value === '1'), z.boolean().default(true)),
   JOBS_ENABLED: z
     .preprocess((value) => (value === undefined || value === '' ? undefined : value === 'true' || value === '1'), z.boolean().default(true)),
 });

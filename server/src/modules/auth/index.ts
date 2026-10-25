@@ -1,5 +1,5 @@
 import type { Db } from '../../shared/db/prisma';
-import { env, isTest } from '../../config/env';
+import { mailer } from '../../shared/mail';
 import { logger } from '../../shared/logger';
 import type { UsersService } from '../users';
 import { AuthService } from './auth.service';
@@ -10,23 +10,23 @@ import { resetPasswordEmail } from './reset-email';
 
 export function createAuthModule(deps: { db: Db; users: UsersService }) {
   /**
-   * §11 reset-email delivery. In dev/test nodemailer jsonTransport just logs the
-   * email (its `message` field carries the reset URL); production plugs a real SMTP here.
+   * §11 + §2.1 reset-email delivery through the shared mailer: SMTP in deployments that set
+   * `SMTP_URL`, a logged json transport otherwise. This used to be wired only outside
+   * production, so a real deployment created the token and never delivered the link.
    */
   const sendResetEmail = async (to: string, name: string, resetUrl: string) => {
-    if (isTest) return;
-    const { default: nodemailer } = await import('nodemailer');
-    const mailer = nodemailer.createTransport({ jsonTransport: true });
     const email = resetPasswordEmail(name, resetUrl);
-    await mailer.sendMail({ from: 'noreply@managesys.local', to, subject: email.subject, text: email.body });
-    logger.info({ to, resetUrl }, 'password reset email (json transport)');
+    const sent = await mailer.send({ to, subject: email.subject, text: email.body });
+    if (!sent && mailer.mode !== 'off') {
+      logger.warn({ to }, 'password reset email could not be delivered');
+    }
   };
 
   const service = new AuthService(
     deps.users,
     new RefreshTokenRepository(deps.db),
     new PasswordResetRepository(deps.db),
-    env.NODE_ENV === 'production' ? undefined : sendResetEmail,
+    sendResetEmail,
   );
   return { service, router: createAuthRouter(service, deps.users) };
 }

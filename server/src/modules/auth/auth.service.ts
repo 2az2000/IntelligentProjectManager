@@ -115,7 +115,7 @@ export class AuthService {
       const token = await this.resetTokens.create(user.id, now);
       const url = `${appUrl.replace(/\/$/, '')}/reset-password?token=${token}`;
       await this.sendResetEmail?.(user.email, user.name, url);
-      logger.info({ userId: user.id }, 'password reset email queued (json transport)');
+      logger.info({ userId: user.id }, 'password reset email queued');
     }
   }
 

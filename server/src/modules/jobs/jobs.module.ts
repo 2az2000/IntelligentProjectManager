@@ -1,8 +1,8 @@
 import { Queue, Worker, type Job, type Processor } from 'bullmq';
-import nodemailer, { type Transporter } from 'nodemailer';
 import IORedis, { type Redis } from 'ioredis';
 import { env, isTest } from '../../config/env';
 import { logger } from '../../shared/logger';
+import { mailer } from '../../shared/mail';
 import type { Db } from '../../shared/db/prisma';
 import { publish } from '../../shared/realtime/bus';
 import { buildDigest, type Digest, type DigestTask } from '../dashboard/digest';
@@ -125,9 +125,6 @@ export function createJobsModule(deps: { db: Db; ai: AiService }): Jobs {
 
   const queue = new Queue<JobData>(QUEUE_NAME, { connection });
 
-  // Dev "SMTP": jsonTransport logs the email instead of sending it.
-  const mailer: Transporter = nodemailer.createTransport({ jsonTransport: true });
-
   const processReminder = async (db: Db, job: ReminderJobData) => {
     const task = await db.task.findFirst({
       where: { id: job.taskId, deletedAt: null },
@@ -157,8 +154,7 @@ export function createJobsModule(deps: { db: Db; ai: AiService }): Jobs {
       publish('notification:new', { userId: assignee.id, type: 'DUE_REMINDER' });
       if (!assignee.notifyEmail) continue;
       const email = dueReminderEmail(assignee.locale, assignee.name, task.title, task.dueDate.toISOString());
-      await mailer.sendMail({ from: 'noreply@managesys.local', to: assignee.email, subject: email.subject, text: email.body });
-      logger.info({ to: assignee.email, subject: email.subject }, 'due reminder email (json transport)');
+      await mailer.send({ to: assignee.email, subject: email.subject, text: email.body });
     }
   };
 
@@ -172,14 +168,17 @@ export function createJobsModule(deps: { db: Db; ai: AiService }): Jobs {
           select: { projectId: true },
         })
       ).map((m) => m.projectId);
-      const digest = await buildDigest(db, { userId: user.id, projectIds });
+      const digest = await buildDigest(db, {
+        userId: user.id,
+        projectIds,
+        timeZone: env.APP_TIME_ZONE,
+      });
       // Nothing open: an empty digest is noise, so it is not delivered at all.
       if (digest.open === 0) continue;
 
       await db.notification.create({ data: { userId: user.id, type: 'DAILY_DIGEST' } });
       const email = digestEmail(user.locale, user.name, digest);
-      await mailer.sendMail({ from: 'noreply@managesys.local', to: user.email, subject: email.subject, text: email.body });
-      logger.info({ to: user.email, subject: email.subject }, 'daily digest email (json transport)');
+      await mailer.send({ to: user.email, subject: email.subject, text: email.body });
     }
   };
 
@@ -233,13 +232,11 @@ export function createJobsModule(deps: { db: Db; ai: AiService }): Jobs {
           await db.notification.create({ data: { userId: user.id, type: 'WEEKLY_SUMMARY', projectId: project.id } });
           publish('notification:new', { userId: user.id, type: 'WEEKLY_SUMMARY' });
           if (!user.notifyEmail) continue;
-          await mailer.sendMail({
-            from: 'noreply@managesys.local',
+          await mailer.send({
             to: user.email,
             subject: isFa ? `گزارش هفتگی «${project.name}»` : `Weekly report — ${project.name}`,
             text: summary.markdown,
           });
-          logger.info({ to: user.email, projectId: project.id }, 'weekly summary email (json transport)');
         }
       }
     }
@@ -254,11 +251,12 @@ export function createJobsModule(deps: { db: Db; ai: AiService }): Jobs {
   const worker = new Worker<JobData>(QUEUE_NAME, processor, { connection });
   worker.on('failed', (job, err) => logger.warn({ jobId: job?.id, err }, 'Job failed'));
 
-  // Daily digest at 08:00 server time (repeatable, deduplicated by jobId).
+  // Daily digest at 08:00 in APP_TIME_ZONE (repeatable, deduplicated by jobId). BullMQ's cron
+  // defaults to UTC, which put an "08:00" digest at 11:30 in Tehran.
   void queue
     .add('daily-digest', { type: 'DAILY_DIGEST' } satisfies DigestJobData, {
       jobId: 'daily-digest',
-      repeat: { pattern: '0 8 * * *' },
+      repeat: { pattern: '0 8 * * *', tz: env.APP_TIME_ZONE },
       removeOnComplete: true,
     })
     .catch((err: unknown) => logger.warn({ err }, 'Failed to schedule digest job'));
@@ -267,7 +265,7 @@ export function createJobsModule(deps: { db: Db; ai: AiService }): Jobs {
   void queue
     .add('weekly-summary', { type: 'WEEKLY_SUMMARY' } satisfies WeeklySummaryJobData, {
       jobId: 'weekly-summary',
-      repeat: { pattern: '0 8 * * 1' },
+      repeat: { pattern: '0 8 * * 1', tz: env.APP_TIME_ZONE },
       removeOnComplete: true,
     })
     .catch((err: unknown) => logger.warn({ err }, 'Failed to schedule weekly summary job'));

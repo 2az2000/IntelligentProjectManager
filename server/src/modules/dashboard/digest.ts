@@ -1,4 +1,6 @@
+import { env } from '../../config/env';
 import type { Db } from '../../shared/db/prisma';
+import { calendarDaysBetween, endOfDayIn } from '../../shared/time/day-bounds';
 import type { TaskPriority, TaskStatus } from '../tasks';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -49,11 +51,13 @@ export interface Digest {
   perProject: DigestProject[];
 }
 
-const startOfDay = (date: Date): Date => new Date(date.getFullYear(), date.getMonth(), date.getDate());
-
-/** Whole calendar days between two instants, counted from midnight to midnight. */
-function wholeDays(from: Date, to: Date): number {
-  return Math.max(0, Math.round((startOfDay(to).getTime() - startOfDay(from).getTime()) / DAY_MS));
+/**
+ * Whole calendar days between two instants, counted midnight-to-midnight in the user's zone.
+ * The server's own zone is never consulted: production images run in UTC, so boxing a 01:00
+ * Tehran completion into "yesterday" was a real off-by-one.
+ */
+function wholeDays(from: Date, to: Date, timeZone: string): number {
+  return Math.max(0, calendarDaysBetween(from, to, timeZone));
 }
 
 /**
@@ -63,11 +67,11 @@ function wholeDays(from: Date, to: Date): number {
  */
 export async function buildDigest(
   db: Db,
-  input: { userId: number; projectIds: number[]; now?: Date },
+  input: { userId: number; projectIds: number[]; now?: Date; timeZone?: string },
 ): Promise<Digest> {
   const now = input.now ?? new Date();
-  const dayEnd = new Date(now);
-  dayEnd.setHours(23, 59, 59, 999);
+  const timeZone = input.timeZone ?? env.APP_TIME_ZONE;
+  const dayEnd = endOfDayIn(timeZone, now);
   const weekEnd = new Date(now.getTime() + 7 * DAY_MS);
   const sinceYesterday = new Date(now.getTime() - DAY_MS);
 
@@ -123,7 +127,12 @@ export async function buildDigest(
   const tasks: DigestTask[] = rows.map((t) => {
     const due = t.dueDate;
     const isOverdue = due !== null && due < now;
-    const days = due === null ? null : isOverdue ? Math.max(1, wholeDays(due, now)) : wholeDays(now, due);
+    const days =
+      due === null
+        ? null
+        : isOverdue
+          ? Math.max(1, wholeDays(due, now, timeZone))
+          : wholeDays(now, due, timeZone);
     return {
       id: t.id,
       title: t.title,

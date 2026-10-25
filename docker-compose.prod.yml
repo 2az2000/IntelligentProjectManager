@@ -51,6 +51,12 @@ services:
       JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:?set in .env}
       UPLOAD_DIR: /app/uploads
       RATE_LIMIT_PER_MINUTE: ${RATE_LIMIT_PER_MINUTE:-300}
+      # §2.10: calendar days + 08:00 cron use this zone, not the container's UTC clock.
+      APP_TIME_ZONE: ${APP_TIME_ZONE:-Asia/Tehran}
+      # §2.1: real mail. Empty SMTP_URL keeps the logged json transport.
+      SMTP_URL: ${SMTP_URL:-}
+      MAIL_FROM: "${MAIL_FROM:-ManageSys <noreply@managesys.local>}"
+      MAIL_ENABLED: ${MAIL_ENABLED:-true}
     volumes:
       - server_uploads:/app/uploads
     depends_on:
