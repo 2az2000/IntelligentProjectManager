@@ -244,6 +244,7 @@ export function createApp(deps: { db: Db } = { db: prisma }) {
   app.use('/search', createSearchRouter({ db, ai: ai.service }));
   app.use('/projects/:projectId/schedule', scheduling.projectScheduleRouter);
   app.use('/projects/:projectId/dependencies', scheduling.dependenciesRouter);
+  app.use('/projects/:projectId/baselines', scheduling.baselinesRouter);
   app.use('/projects/:projectId', scheduling.analyticsRouter);
   app.use('/tasks/:taskId/schedule', scheduling.taskScheduleRouter);
   app.use('/holidays', scheduling.holidaysRouter);

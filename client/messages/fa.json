@@ -320,7 +320,18 @@
     "plannerLatestFinish": "آخرین پایان",
     "plannerSlack": "بافر",
     "plannerHours": "{hours} ساعت",
-    "plannerUnestimated": "{count} تسک بدون تخمین در محاسبه لحاظ نشده‌اند."
+    "plannerUnestimated": "{count} تسک بدون تخمین در محاسبه لحاظ نشده‌اند.",
+    "baseline": {
+      "pick": "خط پایه",
+      "save": "ثبت خط پایه",
+      "saved": "خط پایه ثبت شد",
+      "defaultName": "خط پایه {count}",
+      "durationDrift": "انحراف مدت: {hours} ساعت",
+      "counts": "{moved} جابه‌جا · {added} جدید · {removed} حذف‌شده",
+      "slip": "مجموع تأخیر: {hours} ساعت",
+      "legend": "خط پایه",
+      "ghost": "خط پایه «{title}»"
+    }
   },
   "Members": {
     "title": "اعضای تیم",
@@ -699,7 +710,8 @@
       "forecast": "پیش‌بینی",
       "risks": "ریسک‌ها",
       "burndown": "برن‌داون",
-      "cost": "هزینه"
+      "cost": "هزینه",
+      "baseline": "خط پایه"
     },
     "forecast": {
       "runs": "شبیه‌سازی",
@@ -743,7 +755,23 @@
       "title": "تسک‌های بدون صاحب",
       "empty": "همه تسک‌ها صاحب دارند"
     },
-    "exportCsv": "دریافت CSV"
+    "exportCsv": "دریافت CSV",
+    "baseline": {
+      "empty": "هنوز خط پایه‌ای ثبت نشده است",
+      "pick": "خط پایه",
+      "task": "تسک",
+      "plannedStart": "شروع برنامه",
+      "currentStart": "شروع فعلی",
+      "drift": "انحراف",
+      "onTrack": "طبق برنامه",
+      "moved": "جابه‌جا",
+      "added": "جدید",
+      "removed": "حذف‌شده",
+      "hours": "{value} ساعت",
+      "duration": "مدت برنامه: {planned} → {current} ساعت",
+      "totalDrift": "مجموع تأخیر: {hours} ساعت",
+      "counts": "{moved} جابه‌جا · {added} جدید · {removed} حذف‌شده"
+    }
   },
   "Time": {
     "start": "شروع تایمر",

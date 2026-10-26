@@ -70,6 +70,7 @@ model User {
   attachments         Attachment[]         @relation("AttachmentUploader")
   taskActivities      ActivityLog[]        @relation("ActivityActor")
   notifications       Notification[]       @relation("NotificationOwner")
+  baselinesAuthored   ScheduleBaseline[]   @relation("BaselineAuthor")
   actedNotifications  Notification[]       @relation("NotificationActor")
   commentReactions    CommentReaction[]
   savedViews          SavedView[]
@@ -137,8 +138,44 @@ model Project {
   updatedAt  DateTime  @updatedAt
 
   savedViews SavedView[]
+  /// §2.2: captured CPM snapshots used for the "how far behind are we" comparison.
+  baselines  ScheduleBaseline[]
 
   @@index([ownerId])
+}
+
+/// §2.2 — one captured plan. Items are immutable copies, so a baseline survives task edits.
+model ScheduleBaseline {
+  id                   Int                    @id @default(autoincrement())
+  projectId            Int
+  project              Project                @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  name                 String
+  createdById          Int
+  createdBy            User                   @relation("BaselineAuthor", fields: [createdById], references: [id])
+  /// Longest chained effort at capture time (working hours); drift is measured against it.
+  projectDurationHours Float
+  taskCount            Int
+  createdAt            DateTime               @default(now())
+  items                ScheduleBaselineItem[]
+
+  @@index([projectId, createdAt])
+}
+
+/// One task as it sat on the plan. `taskId` is a plain column (no relation): deleting a task must
+/// not erase the fact that it was planned.
+model ScheduleBaselineItem {
+  id            Int              @id @default(autoincrement())
+  baselineId    Int
+  baseline      ScheduleBaseline @relation(fields: [baselineId], references: [id], onDelete: Cascade)
+  taskId        Int
+  title         String
+  /// CPM earliest start/finish in working hours; null when the task had no estimate.
+  startHours    Float?
+  finishHours   Float?
+  estimateHours Float?
+
+  @@unique([baselineId, taskId])
+  @@index([baselineId])
 }
 
 /// §4 saved views: a named filter set one user keeps for one project.

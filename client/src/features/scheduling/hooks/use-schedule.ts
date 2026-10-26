@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { qk } from '@/lib/query-keys';
 import { schedulingApi, type CreateDependencyInput } from '../api/scheduling.api';
+import type { BaselineSummary } from '../types';
 
 const validId = (id: number | null | undefined): id is number =>
   typeof id === 'number' && Number.isFinite(id) && id > 0;
@@ -37,6 +38,38 @@ export function useApplySchedule(projectId: number) {
   return useMutation({
     mutationFn: () => schedulingApi.applySchedule(projectId),
     onSuccess: () => invalidateScheduleViews(queryClient),
+  });
+}
+
+export function useBaselines(projectId: number) {
+  return useQuery({
+    queryKey: qk.baselines.byProject(projectId),
+    queryFn: () => schedulingApi.listBaselines(projectId),
+    enabled: validId(projectId),
+  });
+}
+
+/** §2.2 freezes the current CPM plan; MEMBER+ only (the server enforces it). */
+export function useCreateBaseline(projectId: number) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (name?: string) => schedulingApi.createBaseline(projectId, name),
+    onSuccess: (baseline) => {
+      queryClient.setQueryData<BaselineSummary[]>(
+        qk.baselines.byProject(projectId),
+        (previous) => [baseline, ...(previous ?? [])],
+      );
+      return queryClient.invalidateQueries({ queryKey: qk.baselines.byProject(projectId) });
+    },
+  });
+}
+
+/** Per-task drift of one snapshot against the schedule computed now. */
+export function useBaselineVariance(projectId: number, baselineId: number | null) {
+  return useQuery({
+    queryKey: qk.baselines.variance(projectId, baselineId ?? 0),
+    queryFn: () => schedulingApi.baselineVariance(projectId, baselineId!),
+    enabled: validId(projectId) && validId(baselineId),
   });
 }
 

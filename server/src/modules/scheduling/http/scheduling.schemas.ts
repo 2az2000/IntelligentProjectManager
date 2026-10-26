@@ -17,3 +17,5 @@ export const dependencyPathParams = z.object({
   predecessorId: id,
   successorId: id,
 });
+
+export const baselinePathParams = z.object({ baselineId: id });

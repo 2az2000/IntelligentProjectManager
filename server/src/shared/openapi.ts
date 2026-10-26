@@ -895,6 +895,92 @@ register({
   responses: { 200: ok(z.record(z.string(), z.unknown())), 404: error },
 });
 
+// ---- §2.2 baselines --------------------------------------------------------
+
+const BaselineSchema = z
+  .object({
+    id: Id,
+    projectId: Id,
+    name: z.string(),
+    createdAt: z.string(),
+    createdBy: z.object({ id: Id, name: z.string(), avatarUrl: z.string().nullable() }),
+    taskCount: z.number().int(),
+    projectDurationHours: z.number(),
+  })
+  .openapi('Baseline');
+
+const BaselineChangeSchema = z
+  .object({
+    taskId: Id,
+    title: z.string(),
+    action: z.enum(['added', 'removed', 'moved', 'onTrack']),
+    /** CPM positions in working hours; null when a side has no estimate. */
+    baselineStartHours: z.number().nullable(),
+    baselineFinishHours: z.number().nullable(),
+    currentStartHours: z.number().nullable(),
+    currentFinishHours: z.number().nullable(),
+    /** current − baseline; positive = the task starts later than planned. */
+    driftHours: z.number().nullable(),
+  })
+  .openapi('BaselineChange');
+
+const BaselineVarianceSchema = z
+  .object({
+    baseline: BaselineSchema,
+    currentDurationHours: z.number(),
+    durationDriftHours: z.number(),
+    counts: z.object({
+      added: z.number().int(),
+      removed: z.number().int(),
+      moved: z.number().int(),
+      onTrack: z.number().int(),
+    }),
+    totalDriftHours: z.number(),
+    tasks: z.array(BaselineChangeSchema),
+  })
+  .openapi('BaselineVariance');
+
+register({
+  method: 'get',
+  path: '/projects/{projectId}/baselines',
+  summary: 'Captured plans of this project, newest first',
+  tags: ['Scheduling'],
+  security: auth,
+  request: { params: z.object({ projectId: pathId('projectId') }) },
+  responses: { 200: ok(z.array(BaselineSchema)), 404: error },
+});
+
+register({
+  method: 'post',
+  path: '/projects/{projectId}/baselines',
+  summary: 'Snapshot the current CPM plan (MEMBER+)',
+  tags: ['Scheduling'],
+  security: auth,
+  request: {
+    params: z.object({ projectId: pathId('projectId') }),
+    body: {
+      content: json(z.object({ name: z.string().min(1).max(80) }).partial()),
+      required: true,
+    },
+  },
+  responses: { 201: created(BaselineSchema), 400: error, 403: error, 409: error },
+});
+
+register({
+  method: 'get',
+  path: '/projects/{projectId}/baselines/{baselineId}/variance',
+  summary: 'Per-task drift between a baseline and the schedule computed now',
+  tags: ['Scheduling'],
+  security: auth,
+  request: {
+    params: z.object({
+      projectId: pathId('projectId'),
+      baselineId: pathId('baselineId'),
+    }),
+  },
+  responses: { 200: ok(BaselineVarianceSchema), 404: error },
+});
+
 // ---- attachments (phase 4) ------------------------------------------------
 
 register({

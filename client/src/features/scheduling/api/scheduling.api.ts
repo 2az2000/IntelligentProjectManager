@@ -1,5 +1,5 @@
 import { apiClient } from '@/lib/api-client';
-import type { DependencyView, ScheduleResult } from '../types';
+import type { BaselineSummary, BaselineVariance, DependencyView, ScheduleResult } from '../types';
 
 export interface CreateDependencyInput {
   predecessorId: number;
@@ -21,4 +21,16 @@ export const schedulingApi = {
   removeDependency: async (projectId: number, predecessorId: number, successorId: number): Promise<void> => {
     await apiClient.delete(`/projects/${projectId}/dependencies/${predecessorId}/${successorId}`);
   },
+
+  /** §2.2 captured plans, newest first. */
+  listBaselines: async (projectId: number): Promise<BaselineSummary[]> =>
+    (await apiClient.get<BaselineSummary[]>(`/projects/${projectId}/baselines`)).data,
+  createBaseline: async (projectId: number, name?: string): Promise<BaselineSummary> =>
+    (await apiClient.post<BaselineSummary>(`/projects/${projectId}/baselines`, { name })).data,
+  baselineVariance: async (projectId: number, baselineId: number): Promise<BaselineVariance> =>
+    (
+      await apiClient.get<BaselineVariance>(
+        `/projects/${projectId}/baselines/${baselineId}/variance`,
+      )
+    ).data,
 };

@@ -1,11 +1,26 @@
 'use client';
 
-import { useMemo } from 'react';
-import { CalendarClock, Check, GitBranch, Loader2, TriangleAlert, Waypoints } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import {
+  BookmarkPlus,
+  CalendarClock,
+  Check,
+  GitBranch,
+  Loader2,
+  TriangleAlert,
+  Waypoints,
+} from 'lucide-react';
 import { useLocale, useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
 import { EmptyState } from '@/components/shared/empty-state';
 import { ErrorState } from '@/components/shared/error-state';
@@ -17,7 +32,14 @@ import { cn } from '@/lib/utils';
 import { useProject, useProjectMembers, useTeamWorkload } from '@/features/projects/hooks/use-projects';
 import { hasRole } from '@/features/projects/types';
 import { useProjectSocket } from '@/features/realtime';
-import { useApplySchedule, useDependencies, useSchedule } from '../hooks/use-schedule';
+import {
+  useApplySchedule,
+  useBaselineVariance,
+  useBaselines,
+  useCreateBaseline,
+  useDependencies,
+  useSchedule,
+} from '../hooks/use-schedule';
 import { DeadlinePlanner } from './deadline-planner';
 import {
   buildDependencyArrows,
@@ -38,6 +60,13 @@ export function ProjectTimeline({ projectId }: { projectId: number }) {
   const { data: dependencies = [] } = useDependencies(projectId);
   const apply = useApplySchedule(projectId);
 
+  // §2.2 — the newest snapshot is what "the plan" means until the user picks another one.
+  const { data: baselines = [] } = useBaselines(projectId);
+  const [pickedBaselineId, setPickedBaselineId] = useState<number | null>(null);
+  const baselineId = pickedBaselineId ?? baselines[0]?.id ?? null;
+  const { data: variance } = useBaselineVariance(projectId, baselineId);
+  const createBaseline = useCreateBaseline(projectId);
+
   // Timeline bars refresh live while teammates move tasks around.
   useProjectSocket(projectId);
 
@@ -48,6 +77,24 @@ export function ProjectTimeline({ projectId }: { projectId: number }) {
     () => (layout && schedule ? buildDependencyArrows(layout, dependencies) : []),
     [layout, schedule, dependencies],
   );
+  /** Baseline bars share the current axis, so a slip shows as the grey bar falling behind. */
+  const ghosts = useMemo(() => {
+    const map = new Map<number, { leftPct: number; widthPct: number }>();
+    if (!layout || !variance) return map;
+    for (const change of variance.tasks) {
+      if (change.baselineStartHours === null || change.baselineFinishHours === null) continue;
+      const leftPct = Math.min(100, (change.baselineStartHours / layout.totalHours) * 100);
+      const widthPct = Math.max(
+        0,
+        Math.min(
+          100 - leftPct,
+          ((change.baselineFinishHours - change.baselineStartHours) / layout.totalHours) * 100,
+        ),
+      );
+      map.set(change.taskId, { leftPct, widthPct });
+    }
+    return map;
+  }, [layout, variance]);
 
   if (isError) return <ErrorState error={error} onRetry={() => refetch()} />;
 
@@ -78,6 +125,18 @@ export function ProjectTimeline({ projectId }: { projectId: number }) {
       onError: (err) => toast.error(toMessage(err)),
     });
 
+  const saveBaseline = () =>
+    createBaseline.mutate(
+      t('baseline.defaultName', { count: formatNumber(baselines.length + 1, locale) }),
+      {
+        onSuccess: (baseline) => {
+          setPickedBaselineId(baseline.id);
+          toast.success(t('baseline.saved'));
+        },
+        onError: (err) => toast.error(toMessage(err)),
+      },
+    );
+
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -94,13 +153,69 @@ export function ProjectTimeline({ projectId }: { projectId: number }) {
             {t('criticalCount', { count: formatNumber(criticalCount, locale) })}
           </Badge>
         </div>
-        {canApply && (
-          <Button size="sm" onClick={applySchedule} disabled={apply.isPending}>
-            {apply.isPending && <Loader2 className="me-2 size-4 animate-spin" aria-hidden />}
-            {t('apply')}
-          </Button>
-        )}
+        <div className="flex flex-wrap items-center gap-2">
+          {baselines.length > 0 && baselineId !== null && (
+            <Select
+              value={String(baselineId)}
+              onValueChange={(value) => setPickedBaselineId(Number(value))}
+            >
+              <SelectTrigger size="sm" className="w-44" aria-label={t('baseline.pick')}>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {baselines.map((baseline) => (
+                  <SelectItem key={baseline.id} value={String(baseline.id)}>
+                    {baseline.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+          {canApply && (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={saveBaseline}
+              disabled={createBaseline.isPending}
+            >
+              {createBaseline.isPending ? (
+                <Loader2 className="me-2 size-4 animate-spin" aria-hidden />
+              ) : (
+                <BookmarkPlus className="me-2 size-4" aria-hidden />
+              )}
+              {t('baseline.save')}
+            </Button>
+          )}
+          {canApply && (
+            <Button size="sm" onClick={applySchedule} disabled={apply.isPending}>
+              {apply.isPending && <Loader2 className="me-2 size-4 animate-spin" aria-hidden />}
+              {t('apply')}
+            </Button>
+          )}
+        </div>
       </div>
+
+      {variance && (
+        <div className="flex flex-wrap items-center gap-2 text-xs">
+          <Badge variant={variance.durationDriftHours > 0 ? 'destructive' : 'outline'}>
+            {t('baseline.durationDrift', {
+              hours: formatNumber(variance.durationDriftHours, locale),
+            })}
+          </Badge>
+          <span className="text-muted-foreground">
+            {t('baseline.counts', {
+              moved: formatNumber(variance.counts.moved, locale),
+              added: formatNumber(variance.counts.added, locale),
+              removed: formatNumber(variance.counts.removed, locale),
+            })}
+          </span>
+          {variance.counts.moved > 0 && (
+            <span className="text-muted-foreground">
+              {t('baseline.slip', { hours: formatNumber(variance.totalDriftHours, locale) })}
+            </span>
+          )}
+        </div>
+      )}
 
       {unestimatedCount > 0 && (
         <div
@@ -145,7 +260,7 @@ export function ProjectTimeline({ projectId }: { projectId: number }) {
 
             <div dir="ltr" className="relative flex-1 border-s py-2">
               {layout.rows.map((row) => (
-                <Bar key={row.task.id} row={row} />
+                <Bar key={row.task.id} row={row} ghost={ghosts.get(row.task.id)} />
               ))}
               {arrows.length > 0 && (
                 <svg
@@ -176,12 +291,26 @@ export function ProjectTimeline({ projectId }: { projectId: number }) {
         </div>
       </div>
 
-      <Legend criticalLabel={t('legend.critical')} slackLabel={t('legend.slack')} doneLabel={t('legend.done')} unestimatedLabel={t('legend.unestimated')} />
+      <Legend
+        criticalLabel={t('legend.critical')}
+        slackLabel={t('legend.slack')}
+        doneLabel={t('legend.done')}
+        unestimatedLabel={t('legend.unestimated')}
+        baselineLabel={t('baseline.legend')}
+        showBaseline={ghosts.size > 0}
+      />
     </div>
   );
 }
 
-function Bar({ row }: { row: TimelineRow }) {
+function Bar({
+  row,
+  ghost,
+}: {
+  row: TimelineRow;
+  /** Where this task sat when the baseline was captured (§2.2); absent without a snapshot. */
+  ghost?: { leftPct: number; widthPct: number };
+}) {
   const t = useTranslations('Scheduling');
   const { task } = row;
 
@@ -193,6 +322,14 @@ function Bar({ row }: { row: TimelineRow }) {
 
   return (
     <div style={{ height: ROW_HEIGHT }} className="relative px-2">
+      {ghost && (
+        <div
+          aria-hidden
+          title={t('baseline.ghost', { title: task.title })}
+          style={{ left: `${ghost.leftPct}%`, width: `${ghost.widthPct}%` }}
+          className="absolute top-1 h-1 rounded-full bg-muted-foreground/40"
+        />
+      )}
       {row.hasBar ? (
         <>
           <div
@@ -268,7 +405,16 @@ function OverloadStrip({ projectId }: { projectId: number }) {
   );
 }
 
-function Legend({ criticalLabel, slackLabel, doneLabel, unestimatedLabel }: Record<'criticalLabel' | 'slackLabel' | 'doneLabel' | 'unestimatedLabel', string>) {
+function Legend({
+  criticalLabel,
+  slackLabel,
+  doneLabel,
+  unestimatedLabel,
+  baselineLabel,
+  showBaseline,
+}: Record<'criticalLabel' | 'slackLabel' | 'doneLabel' | 'unestimatedLabel' | 'baselineLabel', string> & {
+  showBaseline: boolean;
+}) {
   const swatch = 'inline-block size-3 rounded-sm';
   return (
     <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
@@ -284,6 +430,12 @@ function Legend({ criticalLabel, slackLabel, doneLabel, unestimatedLabel }: Reco
       <span className="flex items-center gap-1.5">
         <span className={cn(swatch, 'border border-dashed border-muted-foreground/60')} aria-hidden /> {unestimatedLabel}
       </span>
+      {showBaseline && (
+        <span className="flex items-center gap-1.5">
+          <span className={cn(swatch, 'h-1 self-center rounded-full bg-muted-foreground/40')} aria-hidden />{' '}
+          {baselineLabel}
+        </span>
+      )}
     </div>
   );
 }

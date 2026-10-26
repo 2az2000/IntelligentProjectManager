@@ -320,7 +320,18 @@
     "plannerLatestFinish": "Latest finish",
     "plannerSlack": "Buffer",
     "plannerHours": "{hours}h",
-    "plannerUnestimated": "{count} unestimated tasks are outside the calculation."
+    "plannerUnestimated": "{count} unestimated tasks are outside the calculation.",
+    "baseline": {
+      "pick": "Baseline",
+      "save": "Save baseline",
+      "saved": "Baseline saved",
+      "defaultName": "Baseline {count}",
+      "durationDrift": "Duration drift: {hours}h",
+      "counts": "{moved} moved · {added} added · {removed} removed",
+      "slip": "Total slip: {hours}h",
+      "legend": "Baseline",
+      "ghost": "Baseline “{title}”"
+    }
   },
   "Members": {
     "title": "Team Members",
@@ -699,7 +710,8 @@
       "forecast": "Forecast",
       "risks": "Risks",
       "burndown": "Burndown",
-      "cost": "Cost"
+      "cost": "Cost",
+      "baseline": "Baseline"
     },
     "forecast": {
       "runs": "simulations",
@@ -743,7 +755,23 @@
       "title": "Unassigned tasks",
       "empty": "Every task has an owner"
     },
-    "exportCsv": "Export CSV"
+    "exportCsv": "Export CSV",
+    "baseline": {
+      "empty": "No baseline has been saved yet",
+      "pick": "Baseline",
+      "task": "Task",
+      "plannedStart": "Planned start",
+      "currentStart": "Current start",
+      "drift": "Drift",
+      "onTrack": "On track",
+      "moved": "Moved",
+      "added": "Added",
+      "removed": "Removed",
+      "hours": "{value}h",
+      "duration": "Plan duration: {planned} → {current}h",
+      "totalDrift": "Total slip: {hours}h",
+      "counts": "{moved} moved · {added} added · {removed} removed"
+    }
   },
   "Time": {
     "start": "Start timer",

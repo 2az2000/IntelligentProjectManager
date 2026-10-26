@@ -1,7 +1,15 @@
 'use client';
 
 import { useState } from 'react';
-import { Activity, BarChart3, CircleDollarSign, Download, ShieldAlert, TrendingDown } from 'lucide-react';
+import {
+  Activity,
+  BarChart3,
+  CircleDollarSign,
+  Download,
+  GitCompare,
+  ShieldAlert,
+  TrendingDown,
+} from 'lucide-react';
 import { useLocale, useTranslations } from 'next-intl';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -11,17 +19,27 @@ import { EmptyState } from '@/components/shared/empty-state';
 import { ErrorState } from '@/components/shared/error-state';
 import { formatDate, formatNumber } from '@/lib/format';
 import { cn } from '@/lib/utils';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { useBurndown, useForecast, useRisks } from '../hooks/use-analytics';
 import { useCost } from '../hooks/use-cost';
+import { useBaselineVariance, useBaselines } from '../hooks/use-schedule';
+import type { BaselineTaskChange } from '../types';
 import type { ForecastResult, RiskResult } from '../analytics-types';
 
-type Tab = 'forecast' | 'risks' | 'burndown' | 'cost';
+type Tab = 'forecast' | 'risks' | 'burndown' | 'cost' | 'baseline';
 
 const TABS: { id: Tab; icon: typeof BarChart3 }[] = [
   { id: 'forecast', icon: Activity },
   { id: 'risks', icon: ShieldAlert },
   { id: 'burndown', icon: TrendingDown },
   { id: 'cost', icon: CircleDollarSign },
+  { id: 'baseline', icon: GitCompare },
 ];
 
 /** §6 reports tab — burndown + forecast + risks (+ cost) in one place. */
@@ -70,6 +88,7 @@ export function ProjectReports({ projectId }: { projectId: number }) {
       {tab === 'risks' && <RisksPanel projectId={projectId} />}
       {tab === 'burndown' && <BurndownPanel projectId={projectId} />}
       {tab === 'cost' && <CostPanel projectId={projectId} />}
+      {tab === 'baseline' && <BaselinePanel projectId={projectId} />}
     </section>
   );
 }
@@ -295,6 +314,129 @@ function CostPanel({ projectId }: { projectId: number }) {
           ))}
         </ul>
       </div>
+    </div>
+  );
+}
+
+/**
+ * §2.2 — planned vs actual per task. Only the rows that actually changed are listed; an
+ * unchanged plan would otherwise drown the signal in noise.
+ */
+function BaselinePanel({ projectId }: { projectId: number }) {
+  const t = useTranslations('Reports');
+  const locale = useLocale();
+  const { data: baselines = [], isPending } = useBaselines(projectId);
+  const [picked, setPicked] = useState<number | null>(null);
+  const baselineId = picked ?? baselines[0]?.id ?? null;
+  const { data: variance, isError, error, refetch } = useBaselineVariance(projectId, baselineId);
+
+  if (isPending) return <Skeleton className="h-40" aria-busy />;
+  if (baselines.length === 0) return <EmptyState icon={GitCompare} title={t('baseline.empty')} />;
+  if (isError) return <ErrorState error={error} onRetry={() => refetch()} />;
+  if (!variance) return <Skeleton className="h-40" aria-busy />;
+
+  // A missing position (an unestimated task, or a row that only exists on one side) is a dash,
+  // not a number the reader has to interpret.
+  const hours = (value: number | null) =>
+    value === null ? '—' : t('baseline.hours', { value: formatNumber(value, locale) });
+  const drift = (change: BaselineTaskChange) => {
+    if (change.driftHours === null) return '—';
+    const sign = change.driftHours > 0 ? '+' : change.driftHours < 0 ? '−' : '';
+    return t('baseline.hours', {
+      value: `${sign}${formatNumber(Math.abs(change.driftHours), locale)}`,
+    });
+  };
+
+  const changed = variance.tasks.filter((change) => change.action !== 'onTrack');
+
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="flex flex-wrap items-center gap-2">
+        {baselines.length > 1 && baselineId !== null && (
+          <Select value={String(baselineId)} onValueChange={(value) => setPicked(Number(value))}>
+            <SelectTrigger size="sm" className="w-44" aria-label={t('baseline.pick')}>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {baselines.map((baseline) => (
+                <SelectItem key={baseline.id} value={String(baseline.id)}>
+                  {baseline.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
+        <Badge variant="outline">
+          {t('baseline.duration', {
+            planned: formatNumber(variance.baseline.projectDurationHours, locale),
+            current: formatNumber(variance.currentDurationHours, locale),
+          })}
+        </Badge>
+        <Badge variant={variance.totalDriftHours > 0 ? 'destructive' : 'secondary'}>
+          {t('baseline.totalDrift', { hours: formatNumber(variance.totalDriftHours, locale) })}
+        </Badge>
+      </div>
+
+      {changed.length === 0 ? (
+        <p className="text-muted-foreground flex items-center gap-2 text-sm">
+          <Badge variant="secondary">{t('baseline.onTrack')}</Badge>
+          {t('baseline.counts', {
+            moved: formatNumber(variance.counts.moved, locale),
+            added: formatNumber(variance.counts.added, locale),
+            removed: formatNumber(variance.counts.removed, locale),
+          })}
+        </p>
+      ) : (
+        <div className="overflow-x-auto rounded-lg border">
+          <table className="w-full text-sm">
+            <thead className="bg-muted/40 text-muted-foreground">
+              <tr>
+                <th scope="col" className="p-2 text-start font-medium">
+                  {t('baseline.task')}
+                </th>
+                <th scope="col" className="p-2 text-start font-medium">
+                  {t('baseline.plannedStart')}
+                </th>
+                <th scope="col" className="p-2 text-start font-medium">
+                  {t('baseline.currentStart')}
+                </th>
+                <th scope="col" className="p-2 text-start font-medium">
+                  {t('baseline.drift')}
+                </th>
+              </tr>
+            </thead>
+            <tbody className="divide-y">
+              {changed.map((change) => (
+                <tr key={change.taskId}>
+                  <td className="max-w-56 truncate p-2" title={change.title}>
+                    {change.title}
+                  </td>
+                  <td className="text-muted-foreground p-2">{hours(change.baselineStartHours)}</td>
+                  <td className="text-muted-foreground p-2">{hours(change.currentStartHours)}</td>
+                  <td className="p-2">
+                    <span
+                      className={cn(
+                        'inline-flex items-center gap-1 font-medium',
+                        change.action === 'moved' && (change.driftHours ?? 0) > 0
+                          ? 'text-rose-600 dark:text-rose-400'
+                          : change.action === 'removed'
+                            ? 'text-muted-foreground'
+                            : 'text-emerald-600 dark:text-emerald-400',
+                      )}
+                      dir="ltr"
+                    >
+                      <Badge variant="outline" className="text-[10px]">
+                        {t(`baseline.${change.action}`)}
+                      </Badge>
+                      {drift(change)}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }

@@ -1,3 +1,10 @@
+export type {
+  BaselineSummary,
+  BaselineTaskAction,
+  BaselineTaskChange,
+  BaselineVariance,
+} from '@managesys/contracts';
+
 /** Mirrors SchedulingDto / DependencyDto in docs/02-API-CONTRACT.md */
 export const DEPENDENCY_TYPES = ['FINISH_TO_START'] as const;
 export type DependencyType = (typeof DEPENDENCY_TYPES)[number];

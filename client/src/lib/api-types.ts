@@ -1932,6 +1932,156 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/projects/{projectId}/baselines": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Captured plans of this project, newest first */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    projectId: number;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Successful response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Baseline"][];
+                    };
+                };
+                /** @description Successful response */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        /** Snapshot the current CPM plan (MEMBER+) */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    projectId: number;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        name?: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Created */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Baseline"];
+                    };
+                };
+                /** @description Successful response */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Successful response */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Successful response */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{projectId}/baselines/{baselineId}/variance": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Per-task drift between a baseline and the schedule computed now */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    projectId: number;
+                    baselineId: number;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Successful response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["BaselineVariance"];
+                    };
+                };
+                /** @description Successful response */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/tasks/{taskId}/attachments": {
         parameters: {
             query?: never;
@@ -4278,6 +4428,43 @@ export interface components {
         CreateDependencyBody: {
             predecessorId: number;
             successorId: number;
+        };
+        Baseline: {
+            id: number;
+            projectId: number;
+            name: string;
+            createdAt: string;
+            createdBy: {
+                id: number;
+                name: string;
+                avatarUrl: string | null;
+            };
+            taskCount: number;
+            projectDurationHours: number;
+        };
+        BaselineVariance: {
+            baseline: components["schemas"]["Baseline"];
+            currentDurationHours: number;
+            durationDriftHours: number;
+            counts: {
+                added: number;
+                removed: number;
+                moved: number;
+                onTrack: number;
+            };
+            totalDriftHours: number;
+            tasks: components["schemas"]["BaselineChange"][];
+        };
+        BaselineChange: {
+            taskId: number;
+            title: string;
+            /** @enum {string} */
+            action: "added" | "removed" | "moved" | "onTrack";
+            baselineStartHours: number | null;
+            baselineFinishHours: number | null;
+            currentStartHours: number | null;
+            currentFinishHours: number | null;
+            driftHours: number | null;
         };
         Attachment: {
             id: number;

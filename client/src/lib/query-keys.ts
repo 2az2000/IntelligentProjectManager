@@ -37,6 +37,12 @@ export const qk = {
     byProject: (projectId: number) => ['schedule', 'project', projectId] as const,
     byTask: (taskId: number) => ['schedule', 'task', taskId] as const,
   },
+  baselines: {
+    all: ['baselines'] as const,
+    byProject: (projectId: number) => ['baselines', 'project', projectId] as const,
+    variance: (projectId: number, baselineId: number) =>
+      ['baselines', 'variance', projectId, baselineId] as const,
+  },
   analytics: {
     all: ['analytics'] as const,
     forecast: (projectId: number) => ['analytics', 'forecast', projectId] as const,

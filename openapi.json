@@ -720,6 +720,170 @@
           "successorId"
         ]
       },
+      "Baseline": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "minimum": 0,
+            "exclusiveMinimum": true
+          },
+          "projectId": {
+            "type": "integer",
+            "minimum": 0,
+            "exclusiveMinimum": true
+          },
+          "name": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "createdBy": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "integer",
+                "minimum": 0,
+                "exclusiveMinimum": true
+              },
+              "name": {
+                "type": "string"
+              },
+              "avatarUrl": {
+                "type": "string",
+                "nullable": true
+              }
+            },
+            "required": [
+              "id",
+              "name",
+              "avatarUrl"
+            ]
+          },
+          "taskCount": {
+            "type": "integer"
+          },
+          "projectDurationHours": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "id",
+          "projectId",
+          "name",
+          "createdAt",
+          "createdBy",
+          "taskCount",
+          "projectDurationHours"
+        ]
+      },
+      "BaselineVariance": {
+        "type": "object",
+        "properties": {
+          "baseline": {
+            "$ref": "#/components/schemas/Baseline"
+          },
+          "currentDurationHours": {
+            "type": "number"
+          },
+          "durationDriftHours": {
+            "type": "number"
+          },
+          "counts": {
+            "type": "object",
+            "properties": {
+              "added": {
+                "type": "integer"
+              },
+              "removed": {
+                "type": "integer"
+              },
+              "moved": {
+                "type": "integer"
+              },
+              "onTrack": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "added",
+              "removed",
+              "moved",
+              "onTrack"
+            ]
+          },
+          "totalDriftHours": {
+            "type": "number"
+          },
+          "tasks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BaselineChange"
+            }
+          }
+        },
+        "required": [
+          "baseline",
+          "currentDurationHours",
+          "durationDriftHours",
+          "counts",
+          "totalDriftHours",
+          "tasks"
+        ]
+      },
+      "BaselineChange": {
+        "type": "object",
+        "properties": {
+          "taskId": {
+            "type": "integer",
+            "minimum": 0,
+            "exclusiveMinimum": true
+          },
+          "title": {
+            "type": "string"
+          },
+          "action": {
+            "type": "string",
+            "enum": [
+              "added",
+              "removed",
+              "moved",
+              "onTrack"
+            ]
+          },
+          "baselineStartHours": {
+            "type": "number",
+            "nullable": true
+          },
+          "baselineFinishHours": {
+            "type": "number",
+            "nullable": true
+          },
+          "currentStartHours": {
+            "type": "number",
+            "nullable": true
+          },
+          "currentFinishHours": {
+            "type": "number",
+            "nullable": true
+          },
+          "driftHours": {
+            "type": "number",
+            "nullable": true
+          }
+        },
+        "required": [
+          "taskId",
+          "title",
+          "action",
+          "baselineStartHours",
+          "baselineFinishHours",
+          "currentStartHours",
+          "currentFinishHours",
+          "driftHours"
+        ]
+      },
       "Attachment": {
         "type": "object",
         "properties": {
@@ -4256,6 +4420,195 @@
                   "additionalProperties": {
                     "nullable": true
                   }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/projects/{projectId}/baselines": {
+      "get": {
+        "summary": "Captured plans of this project, newest first",
+        "tags": [
+          "Scheduling"
+        ],
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "exclusiveMinimum": true
+            },
+            "required": true,
+            "name": "projectId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Baseline"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Snapshot the current CPM plan (MEMBER+)",
+        "tags": [
+          "Scheduling"
+        ],
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "exclusiveMinimum": true
+            },
+            "required": true,
+            "name": "projectId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 80
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Baseline"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/projects/{projectId}/baselines/{baselineId}/variance": {
+      "get": {
+        "summary": "Per-task drift between a baseline and the schedule computed now",
+        "tags": [
+          "Scheduling"
+        ],
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "exclusiveMinimum": true
+            },
+            "required": true,
+            "name": "projectId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "exclusiveMinimum": true
+            },
+            "required": true,
+            "name": "baselineId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BaselineVariance"
                 }
               }
             }
