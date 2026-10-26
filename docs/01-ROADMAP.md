@@ -262,6 +262,7 @@
 | Scheduling | تقویم کاری واقعی | تعطیلات ایران + `work-calendar` + محاسبه‌ی روز کاری | ۴ |
 | Scheduling | تضاد تاریخ دستی با dependency | `date-conflicts.ts` + هشدار غیرمسدودکننده در PATCH | ۴ |
 | Scheduling | توزیع بار تیم | workload heatmap + ظرفیت فردی + گزارش burndown/velocity | ۴ |
+| Scheduling | خط پایه و انحراف (Baseline) | `ScheduleBaseline` + snapshot از CPM + `variance` + لایه‌ی ghost در Timeline و تب «خط پایه» در گزارش | ۹ |
 | Scheduling | پیشرفت خودکار و تسک بی‌صاحب | پیشرفت از زیرتسک‌ها، فهرست بدون صاحب و انتقال مالکیت | ۴ |
 | AI | کمک هوشمند در جای‌های پرهزینه | enrich تسک، داکیومنت پروژه، چت با tool، خلاصه‌ی هفتگی/thread، برچسب خودکار، stand-up، جست‌وجوی معنایی pgvector | ۷ |
 | UX | کار سریع‌تر با کیبورد | Command Palette ⌘K، میانبرها، ویرایش درجا، Bulk، جست‌وجوی سراسری | ۳ |
@@ -285,7 +286,7 @@
 - [x] **ترجیحات per-type اعلان** — `User.emailPreferences` (JSONB، سه کلید digest/reminders/weekly)، resolver و واژگان در contracts، `PATCH /users/me` با merge جزئی، گیت `wantsEmail` روی هر سه ایمیل job، و سه سوییچ زیر کلید اصلی در تنظیمات (2026-10-25).
 
 **اولویت ۲ — ارزش روی موجودی**
-- [ ] **§۲.۲ خط پایه و انحراف (Baseline)** — `ScheduleBaseline` + snapshot از `buildSchedule` + variance + لایه‌ی Timeline.
+- [x] **§۲.۲ خط پایه و انحراف (Baseline)** — `ScheduleBaseline`/`ScheduleBaselineItem`، snapshot از `buildSchedule`، `GET .../baselines/:id/variance` با تفکیک moved/added/removed، نوار ghost در Timeline و تب «خط پایه» در گزارش (2026-10-26).
 - [ ] **§۲.۳ نقاط عطف (Milestone)** — مدل، progress از estimate، لوزی روی Timeline.
 - [ ] **Auto-scheduling زنجیره‌ای** — تغییر تخمین/تاریخ تسک، پایین‌دست را با flag سرکوب به‌روز کند.
 - [ ] **§۲.۴ Watch / Follow** — watcher برای تسک و پروژه و افزودن به گیرندگان اعلان.
